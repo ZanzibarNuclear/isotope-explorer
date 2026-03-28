@@ -4,10 +4,28 @@ import { onMounted, ref } from "vue";
 const wasmVersion = ref<string>("…");
 const wasmError = ref<string | null>(null);
 
+/** Example nuclide from the Rust model (compositional only). */
+const exampleNuclide = ref<{
+  notation: string;
+  elementSymbol: string;
+  z: number;
+  n: number;
+  a: number;
+} | null>(null);
+
 onMounted(async () => {
   try {
     const mod = await import("@wasm/nuclear_sim_wasm.js");
     wasmVersion.value = mod.sim_version();
+    const u = mod.NuclideInfo.uranium_235();
+    exampleNuclide.value = {
+      notation: u.notation,
+      elementSymbol: u.elementSymbol,
+      z: u.z,
+      n: u.n,
+      a: u.a,
+    };
+    u.free();
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
   }
@@ -36,6 +54,17 @@ onMounted(async () => {
             <span v-if="wasmError" class="error">{{ wasmError }}</span>
             <span v-else>v{{ wasmVersion }}</span>
           </dd>
+          <template v-if="exampleNuclide">
+            <dt>Sample nuclide</dt>
+            <dd>{{ exampleNuclide.notation }}</dd>
+            <dt>Z / N / A</dt>
+            <dd>
+              {{ exampleNuclide.z }} protons · {{ exampleNuclide.n }} neutrons ·
+              {{ exampleNuclide.a }} nucleons
+            </dd>
+            <dt>Element</dt>
+            <dd>{{ exampleNuclide.elementSymbol }}</dd>
+          </template>
         </dl>
         <p class="hint">
           Run <code>npm run wasm</code> from the repo root if the module failed to load.
