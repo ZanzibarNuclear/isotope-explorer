@@ -1,0 +1,12 @@
+[package]
+name = "nuclear-sim-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "WASM bindings for nuclear-sim"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+nuclear-sim = { path = "../nuclear-sim" }
+wasm-bindgen = "0.2"

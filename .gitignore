@@ -1,0 +1,20 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# WASM pack output (generated)
+/crates/nuclear-sim-wasm/pkg/
+
+# Node / Vue
+node_modules/
+dist/
+*.local
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Logs
+npm-debug.log*

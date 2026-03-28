@@ -1,0 +1,13 @@
+{
+  "name": "isotopic-explorer",
+  "private": true,
+  "devDependencies": {
+    "wasm-pack": "^0.14.0"
+  },
+  "scripts": {
+    "wasm": "wasm-pack build crates/nuclear-sim-wasm --target bundler",
+    "dev": "npm run wasm && npm --prefix apps/web run dev",
+    "build": "npm run wasm && npm --prefix apps/web run build",
+    "preview": "npm --prefix apps/web run preview"
+  }
+}
