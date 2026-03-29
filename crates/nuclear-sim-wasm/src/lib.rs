@@ -183,6 +183,8 @@ pub struct SimStateJs {
     pub cursor: usize,
     pub step_count: usize,
     pub is_complete: bool,
+    pub can_decay: bool,
+    pub can_fire: bool,
     pub current_step: StepJs,
     pub has_fission_branch: bool,
     pub following_heavy: bool,
@@ -264,6 +266,13 @@ impl SimSession {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// Induce a single decay step. Returns error if stable.
+    pub fn induce_decay(&mut self) -> Result<(), JsValue> {
+        self.sim
+            .induce_decay()
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Switch to following the light or heavy fission fragment.
     /// fragment: "light" or "heavy"
     pub fn switch_branch(&mut self, fragment: &str) -> Result<(), JsValue> {
@@ -310,6 +319,8 @@ impl SimSession {
             cursor: self.sim.cursor(),
             step_count: self.sim.step_count(),
             is_complete: self.sim.is_complete(),
+            can_decay: self.sim.can_decay(),
+            can_fire: self.sim.can_fire(),
             current_step: step,
             has_fission_branch: !self.sim.fission_branches().is_empty(),
             following_heavy: self.following_heavy,
