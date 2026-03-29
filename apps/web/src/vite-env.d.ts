@@ -8,6 +8,7 @@ declare module "@wasm/nuclear_sim_wasm.js" {
     presets(): Preset[];
     set_isotope(z: number, n: number): void;
     fire_neutron(energy: "slow" | "fast"): void;
+    induce_decay(): void;
     switch_branch(fragment: "light" | "heavy"): void;
     step_forward(): void;
     step_back(): void;
@@ -55,6 +56,8 @@ declare module "@wasm/nuclear_sim_wasm.js" {
     cursor: number;
     step_count: number;
     is_complete: boolean;
+    can_decay: boolean;
+    can_fire: boolean;
     current_step: StepInfo;
     has_fission_branch: boolean;
     following_heavy: boolean;

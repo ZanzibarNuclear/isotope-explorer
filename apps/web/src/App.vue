@@ -13,13 +13,8 @@ const canStepBack = computed(() => simState.value && simState.value.cursor > 0);
 const canStepForward = computed(
   () => simState.value && simState.value.cursor < simState.value.step_count - 1
 );
-const canFire = computed(() => {
-  if (!simState.value) return false;
-  // Can fire if we're at the start (only Start event) or the chain is complete
-  // and user is at the end
-  const s = simState.value;
-  return s.step_count === 1 && s.current_step.event_type === "start";
-});
+const canFire = computed(() => simState.value?.can_fire ?? false);
+const canDecay = computed(() => simState.value?.can_decay ?? false);
 
 function refreshState() {
   if (!session.value) return;
@@ -41,6 +36,16 @@ function fireNeutron(energy: "slow" | "fast") {
   if (!session.value) return;
   try {
     session.value.fire_neutron(energy);
+    refreshState();
+  } catch (e) {
+    wasmError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+function induceDecay() {
+  if (!session.value) return;
+  try {
+    session.value.induce_decay();
     refreshState();
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
@@ -164,15 +169,18 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- Neutron controls -->
+        <!-- Action controls -->
         <div class="section" v-if="simState">
-          <h2>Fire Neutron</h2>
-          <div class="neutron-btns">
+          <h2>Actions</h2>
+          <div class="action-btns">
             <button class="fire-btn slow" :disabled="!canFire" @click="fireNeutron('slow')">
               Slow Neutron
             </button>
             <button class="fire-btn fast" :disabled="!canFire" @click="fireNeutron('fast')">
               Fast Neutron
+            </button>
+            <button class="fire-btn decay" :disabled="!canDecay" @click="induceDecay">
+              Induce Decay
             </button>
           </div>
         </div>
@@ -389,13 +397,15 @@ onMounted(async () => {
   background: #1f6feb33;
 }
 
-/* -- Fire buttons -- */
-.neutron-btns {
+/* -- Action buttons -- */
+.action-btns {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }
 .fire-btn {
   flex: 1;
+  min-width: 7rem;
   padding: 0.5rem;
   border: none;
   border-radius: 6px;
@@ -421,6 +431,13 @@ onMounted(async () => {
 }
 .fire-btn.fast:not(:disabled):hover {
   background: #f39c55;
+}
+.fire-btn.decay {
+  background: #8957e5;
+  color: #fff;
+}
+.fire-btn.decay:not(:disabled):hover {
+  background: #a371f7;
 }
 
 /* -- Navigation -- */
