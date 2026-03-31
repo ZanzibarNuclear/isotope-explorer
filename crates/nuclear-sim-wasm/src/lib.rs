@@ -1,7 +1,7 @@
 //! WASM bindings for the nuclear simulation engine.
 
 use nuclear_sim::{
-    build_stub_database, DecayMode, NeutronEnergy, SimEvent, Simulation as CoreSim, Stability,
+    build_extracted_database, DecayMode, NeutronEnergy, SimEvent, Simulation as CoreSim, Stability,
     Nuclide,
 };
 use serde::Serialize;
@@ -234,7 +234,7 @@ impl SimSession {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self {
-            sim: CoreSim::new(build_stub_database()),
+            sim: CoreSim::new(build_extracted_database()),
             following_heavy: true,
         }
     }

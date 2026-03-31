@@ -16,5 +16,12 @@ dist/
 .idea/
 .vscode/
 
+# Python extraction scripts
+scripts/.venv/
+scripts/data/
+
+# Context (Conductor workspace)
+.context/
+
 # Logs
 npm-debug.log*
