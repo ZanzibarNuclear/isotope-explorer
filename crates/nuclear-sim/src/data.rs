@@ -102,6 +102,11 @@ impl NuclideDatabase {
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
+
+    /// Return all (Z, N) keys in the database.
+    pub fn keys(&self) -> Vec<(u16, u16)> {
+        self.data.keys().map(|n| (n.z(), n.n())).collect()
+    }
 }
 
 // ---------------------------------------------------------------------------

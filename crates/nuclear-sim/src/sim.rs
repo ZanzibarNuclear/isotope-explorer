@@ -395,6 +395,11 @@ impl Simulation {
     pub fn lookup(&self, nuclide: &Nuclide) -> Option<&NuclideData> {
         self.db.get(nuclide)
     }
+
+    /// Return all (Z, N) keys in the database.
+    pub fn nuclide_keys(&self) -> Vec<(u16, u16)> {
+        self.db.keys()
+    }
 }
 
 #[cfg(test)]

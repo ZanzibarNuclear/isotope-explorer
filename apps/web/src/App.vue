@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from "vue";
-import type { SimState, StepInfo, Preset } from "@wasm/nuclear_sim_wasm.js";
+import type { SimState, StepInfo } from "@wasm/nuclear_sim_wasm.js";
+import PeriodicTablePicker from "./components/PeriodicTablePicker.vue";
 
 const wasmVersion = ref("...");
 const wasmError = ref<string | null>(null);
 const session = ref<any>(null);
 const simState = ref<SimState | null>(null);
 const allSteps = ref<StepInfo[]>([]);
-const presetList = ref<Preset[]>([]);
 
 const canStepBack = computed(() => simState.value && simState.value.cursor > 0);
 const canStepForward = computed(
@@ -27,10 +27,10 @@ function refreshState() {
   allSteps.value = session.value.all_steps();
 }
 
-function selectPreset(p: Preset) {
+function onSelectIsotope(z: number, n: number) {
   if (!session.value) return;
   try {
-    session.value.set_isotope(p.z, p.n);
+    session.value.set_isotope(z, n);
     refreshState();
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
@@ -104,7 +104,6 @@ onMounted(async () => {
     wasmVersion.value = mod.sim_version();
     const s = new mod.SimSession();
     session.value = s;
-    presetList.value = s.presets();
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
   }
@@ -117,6 +116,11 @@ onMounted(async () => {
       <h1>Isotope Explorer</h1>
       <p class="subtitle">Fire neutrons at nuclei and see what happens</p>
     </header>
+
+    <!-- Periodic table picker (full width) -->
+    <section v-if="session" class="picker-area">
+      <PeriodicTablePicker :session="session" @select-isotope="onSelectIsotope" />
+    </section>
 
     <main class="main">
       <!-- Left: chain visualization -->
@@ -147,22 +151,6 @@ onMounted(async () => {
       <aside class="panel" aria-label="Controls">
         <!-- Error display -->
         <p v-if="wasmError" class="error">{{ wasmError }}</p>
-
-        <!-- Isotope picker -->
-        <div class="section">
-          <h2>Choose Isotope</h2>
-          <div class="presets">
-            <button
-              v-for="p in presetList"
-              :key="p.notation"
-              class="preset-btn"
-              :class="{ selected: simState?.current_step?.event_type === 'start' && simState?.current_step?.nuclide?.notation === p.notation }"
-              @click="selectPreset(p)"
-            >
-              {{ p.notation }}
-            </button>
-          </div>
-        </div>
 
         <!-- Neutron controls -->
         <div class="section" v-if="simState">
@@ -364,29 +352,9 @@ onMounted(async () => {
   color: #8b949e;
 }
 
-/* -- Presets -- */
-.presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-.preset-btn {
-  padding: 0.35rem 0.7rem;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  background: #21262d;
-  color: #e6edf3;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-.preset-btn:hover {
-  border-color: #58a6ff;
-  background: #1c2128;
-}
-.preset-btn.selected {
-  border-color: #58a6ff;
-  background: #1f6feb33;
+/* -- Picker area -- */
+.picker-area {
+  border-bottom: 1px solid #30363d;
 }
 
 /* -- Fire buttons -- */
