@@ -321,10 +321,9 @@ impl Simulation {
 
     /// Induce a single decay step on the current nuclide.
     ///
-    /// Uses the half-life to generate a simulated elapsed time, picks a decay
-    /// mode by branching ratio, and appends one Decay event (or Stable if the
-    /// daughter is stable). Does NOT auto-follow the chain -- the user clicks
-    /// again to see the next step.
+    /// Picks a decay mode by branching ratio and appends one Decay event (or
+    /// Stable if the daughter is stable). Does NOT auto-follow the chain --
+    /// the user clicks again to see the next step.
     ///
     /// Truncates any future steps past the cursor, just like fire_neutron.
     pub fn induce_decay(&mut self) -> Result<(), SimError> {
@@ -348,7 +347,6 @@ impl Simulation {
             .retain(|b| b.fission_step <= self.cursor);
 
         // Pick the dominant decay mode (highest branching fraction).
-        // TODO: use RNG weighted by branching fractions for variety.
         let branch = data
             .decay_modes
             .iter()
@@ -368,7 +366,6 @@ impl Simulation {
         self.cursor = self.steps.len() - 1;
 
         // If the daughter is stable, append a Stable event automatically
-        // so the user sees the chain has ended.
         let daughter_stable = self
             .db
             .get(&daughter)
@@ -396,8 +393,6 @@ impl Simulation {
     }
 
     /// Can a neutron be fired at the current nuclide?
-    /// True if we have a starting isotope and the current step isn't already
-    /// mid-auto-chain (for now, always true if we have steps).
     pub fn can_fire(&self) -> bool {
         !self.steps.is_empty()
     }
@@ -474,6 +469,11 @@ impl Simulation {
     /// Look up data for a nuclide in the database.
     pub fn lookup(&self, nuclide: &Nuclide) -> Option<&NuclideData> {
         self.db.get(nuclide)
+    }
+
+    /// Return all (Z, N) keys in the database.
+    pub fn nuclide_keys(&self) -> Vec<(u16, u16)> {
+        self.db.keys()
     }
 }
 
@@ -588,12 +588,10 @@ mod tests {
     fn can_fire_neutron_after_chain_completes() {
         let mut sim = new_sim();
         sim.set_isotope(6, 8).unwrap(); // C-14
-        // Induce decay to N-14 (stable)
         sim.induce_decay().unwrap();
         assert!(sim.is_complete());
         // Should still be able to fire a neutron at the stable N-14
         sim.fire_neutron(NeutronEnergy::Slow).unwrap();
-        // Chain restarts from N-14 + neutron
         assert!(sim.step_count() > 2);
     }
 
@@ -627,7 +625,6 @@ mod tests {
         assert!(sim.can_decay());
 
         sim.induce_decay().unwrap();
-        // Co-60 -> Ni-60 (stable), so should be complete
         assert_eq!(sim.current_nuclide().notation(), "Ni-60");
         assert!(sim.is_complete());
     }
@@ -637,10 +634,8 @@ mod tests {
         let mut sim = new_sim();
         sim.set_isotope(92, 143).unwrap(); // U-235
         sim.fire_neutron(NeutronEnergy::Slow).unwrap();
-        // Go back to step 1 (NeutronAbsorbed) and fire again
         sim.go_to_step(1).unwrap();
         sim.fire_neutron(NeutronEnergy::Slow).unwrap();
-        // Future steps should have been truncated and replaced
         assert!(sim.step_count() > 1);
     }
 }

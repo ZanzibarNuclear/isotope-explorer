@@ -10,6 +10,7 @@ declare module "@wasm/nuclear_sim_wasm.js" {
     fire_neutron(energy: "slow" | "fast"): void;
     induce_decay(): void;
     switch_branch(fragment: "light" | "heavy"): void;
+    all_nuclide_keys(): { z: number; n: number }[];
     step_forward(): void;
     step_back(): void;
     go_to_step(index: number): void;

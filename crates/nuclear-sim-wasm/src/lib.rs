@@ -1,7 +1,7 @@
 //! WASM bindings for the nuclear simulation engine.
 
 use nuclear_sim::{
-    build_stub_database, DecayMode, NeutronEnergy, SimEvent, Simulation as CoreSim, Stability,
+    build_extracted_database, DecayMode, NeutronEnergy, SimEvent, Simulation as CoreSim, Stability,
     Nuclide,
 };
 use serde::Serialize;
@@ -191,6 +191,12 @@ pub struct SimStateJs {
 }
 
 #[derive(Serialize)]
+pub struct NuclideKeyJs {
+    pub z: u16,
+    pub n: u16,
+}
+
+#[derive(Serialize)]
 pub struct NuclideDataJs {
     pub notation: String,
     pub is_stable: bool,
@@ -236,7 +242,7 @@ impl SimSession {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self {
-            sim: CoreSim::new(build_stub_database()),
+            sim: CoreSim::new(build_extracted_database()),
             following_heavy: true,
         }
     }
@@ -338,6 +344,17 @@ impl SimSession {
             .map(|(i, e)| event_to_step(i, e))
             .collect();
         serde_wasm_bindgen::to_value(&steps).unwrap()
+    }
+
+    /// Return all (Z, N) pairs in the database as [{z, n}].
+    pub fn all_nuclide_keys(&self) -> JsValue {
+        let keys: Vec<NuclideKeyJs> = self
+            .sim
+            .nuclide_keys()
+            .into_iter()
+            .map(|(z, n)| NuclideKeyJs { z, n })
+            .collect();
+        serde_wasm_bindgen::to_value(&keys).unwrap()
     }
 
     /// Look up data for a nuclide. Returns null if unknown.

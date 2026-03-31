@@ -8,8 +8,8 @@ mod nucleus;
 mod sim;
 
 pub use data::{
-    build_stub_database, DecayBranch, DecayMode, FissionProduct, NuclideData, NuclideDatabase,
-    Stability,
+    build_extracted_database, build_stub_database, DecayBranch, DecayMode, FissionProduct,
+    NuclideData, NuclideDatabase, Stability,
 };
 pub use elements::symbol as element_symbol;
 pub use nuclide::{Nuclide, NuclideError};
