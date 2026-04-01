@@ -2,6 +2,10 @@
 import { onMounted, ref, computed } from "vue";
 import type { SimState, StepInfo } from "@wasm/nuclear_sim_wasm.js";
 import PeriodicTablePicker from "./components/PeriodicTablePicker.vue";
+import QuickPickList from "./components/QuickPickList.vue";
+
+type PickerView = "table" | "quick";
+const pickerView = ref<PickerView>("table");
 
 const wasmVersion = ref("...");
 const wasmError = ref<string | null>(null);
@@ -122,9 +126,34 @@ onMounted(async () => {
       <p class="subtitle">Fire neutrons at nuclei and see what happens</p>
     </header>
 
-    <!-- Periodic table picker (full width) -->
+    <!-- Isotope picker (full width) -->
     <section v-if="session" class="picker-area">
-      <PeriodicTablePicker :session="session" @select-isotope="onSelectIsotope" />
+      <div class="picker-toggle">
+        <button
+          class="toggle-btn"
+          :class="{ active: pickerView === 'table' }"
+          @click="pickerView = 'table'"
+        >
+          Periodic Table
+        </button>
+        <button
+          class="toggle-btn"
+          :class="{ active: pickerView === 'quick' }"
+          @click="pickerView = 'quick'"
+        >
+          Quick Pick
+        </button>
+      </div>
+      <PeriodicTablePicker
+        v-if="pickerView === 'table'"
+        :session="session"
+        @select-isotope="onSelectIsotope"
+      />
+      <QuickPickList
+        v-else
+        :session="session"
+        @select-isotope="onSelectIsotope"
+      />
     </section>
 
     <main class="main">
@@ -363,6 +392,34 @@ onMounted(async () => {
 /* -- Picker area -- */
 .picker-area {
   border-bottom: 1px solid #30363d;
+}
+
+.picker-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 0.5rem 1.25rem 0;
+  background: #0d1117;
+}
+.toggle-btn {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid #30363d;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: #161b22;
+  color: #8b949e;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.toggle-btn:hover {
+  background: #21262d;
+  color: #e6edf3;
+}
+.toggle-btn.active {
+  background: #21262d;
+  color: #e6edf3;
+  border-color: #30363d;
 }
 
 /* -- Action buttons -- */
