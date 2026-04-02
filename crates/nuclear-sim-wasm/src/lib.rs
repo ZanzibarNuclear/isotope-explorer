@@ -43,6 +43,11 @@ pub struct StepJs {
     pub event_type: String,
     pub description: String,
     pub nuclide: NuclideJs,
+    /// Whether the nuclide shown in this row is stable in the database.
+    pub nuclide_is_stable: bool,
+    /// Half-life in seconds when radioactive and known; omitted when stable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nuclide_half_life_s: Option<f64>,
     /// Extra detail depending on event type
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<StepDetail>,
@@ -76,111 +81,145 @@ fn decay_mode_name(mode: &DecayMode) -> &'static str {
     }
 }
 
-fn event_to_step(index: usize, event: &SimEvent) -> StepJs {
+fn nuclide_timing(sim: &CoreSim, nuclide: &Nuclide) -> (bool, Option<f64>) {
+    sim.lookup(nuclide).map_or((false, None), |d| {
+        (
+            d.stability == Stability::Stable,
+            d.half_life_s,
+        )
+    })
+}
+
+fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
     match event {
-        SimEvent::Start { nuclide } => StepJs {
-            index,
-            event_type: "start".into(),
-            description: format!("Starting with {}", nuclide.notation()),
-            nuclide: NuclideJs::from_nuclide(nuclide),
-            detail: None,
-        },
+        SimEvent::Start { nuclide } => {
+            let (nuclide_is_stable, nuclide_half_life_s) = nuclide_timing(sim, nuclide);
+            StepJs {
+                index,
+                event_type: "start".into(),
+                description: format!("Starting with {}", nuclide.notation()),
+                nuclide: NuclideJs::from_nuclide(nuclide),
+                nuclide_is_stable,
+                nuclide_half_life_s,
+                detail: None,
+            }
+        }
         SimEvent::NeutronAbsorbed {
             target,
             energy,
             compound,
-        } => StepJs {
-            index,
-            event_type: "neutron-absorbed".into(),
-            description: format!(
-                "{} absorbs a {} neutron, forming {}",
-                target.notation(),
-                match energy {
-                    NeutronEnergy::Slow => "slow",
-                    NeutronEnergy::Fast => "fast",
-                },
-                compound.notation()
-            ),
-            nuclide: NuclideJs::from_nuclide(compound),
-            detail: Some(StepDetail {
-                target: Some(NuclideJs::from_nuclide(target)),
-                energy: Some(
+        } => {
+            let (nuclide_is_stable, nuclide_half_life_s) = nuclide_timing(sim, compound);
+            StepJs {
+                index,
+                event_type: "neutron-absorbed".into(),
+                description: format!(
+                    "{} absorbs a {} neutron, forming {}",
+                    target.notation(),
                     match energy {
                         NeutronEnergy::Slow => "slow",
                         NeutronEnergy::Fast => "fast",
-                    }
-                    .into(),
+                    },
+                    compound.notation()
                 ),
-                light_fragment: None,
-                heavy_fragment: None,
-                neutrons_released: None,
-                decay_mode: None,
-                parent: None,
-            }),
-        },
+                nuclide: NuclideJs::from_nuclide(compound),
+                nuclide_is_stable,
+                nuclide_half_life_s,
+                detail: Some(StepDetail {
+                    target: Some(NuclideJs::from_nuclide(target)),
+                    energy: Some(
+                        match energy {
+                            NeutronEnergy::Slow => "slow",
+                            NeutronEnergy::Fast => "fast",
+                        }
+                        .into(),
+                    ),
+                    light_fragment: None,
+                    heavy_fragment: None,
+                    neutrons_released: None,
+                    decay_mode: None,
+                    parent: None,
+                }),
+            }
+        }
         SimEvent::Fission {
             parent,
             light,
             heavy,
             neutrons_released,
-        } => StepJs {
-            index,
-            event_type: "fission".into(),
-            description: format!(
-                "{} splits into {} + {} + {} neutrons",
-                parent.notation(),
-                light.notation(),
-                heavy.notation(),
-                neutrons_released
-            ),
-            nuclide: NuclideJs::from_nuclide(heavy),
-            detail: Some(StepDetail {
-                target: None,
-                energy: None,
-                light_fragment: Some(NuclideJs::from_nuclide(light)),
-                heavy_fragment: Some(NuclideJs::from_nuclide(heavy)),
-                neutrons_released: Some(*neutrons_released),
-                decay_mode: None,
-                parent: Some(NuclideJs::from_nuclide(parent)),
-            }),
-        },
+        } => {
+            let (nuclide_is_stable, nuclide_half_life_s) = nuclide_timing(sim, heavy);
+            StepJs {
+                index,
+                event_type: "fission".into(),
+                description: format!(
+                    "{} splits into {} + {} + {} neutrons",
+                    parent.notation(),
+                    light.notation(),
+                    heavy.notation(),
+                    neutrons_released
+                ),
+                nuclide: NuclideJs::from_nuclide(heavy),
+                nuclide_is_stable,
+                nuclide_half_life_s,
+                detail: Some(StepDetail {
+                    target: None,
+                    energy: None,
+                    light_fragment: Some(NuclideJs::from_nuclide(light)),
+                    heavy_fragment: Some(NuclideJs::from_nuclide(heavy)),
+                    neutrons_released: Some(*neutrons_released),
+                    decay_mode: None,
+                    parent: Some(NuclideJs::from_nuclide(parent)),
+                }),
+            }
+        }
         SimEvent::Decay {
             parent,
             mode,
             daughter,
-        } => StepJs {
-            index,
-            event_type: "decay".into(),
-            description: format!(
-                "{} undergoes {} decay, producing {}",
-                parent.notation(),
-                decay_mode_name(mode),
-                daughter.notation()
-            ),
-            nuclide: NuclideJs::from_nuclide(daughter),
-            detail: Some(StepDetail {
-                target: None,
-                energy: None,
-                light_fragment: None,
-                heavy_fragment: None,
-                neutrons_released: None,
-                decay_mode: Some(decay_mode_name(mode).into()),
-                parent: Some(NuclideJs::from_nuclide(parent)),
-            }),
-        },
-        SimEvent::Stable { nuclide } => StepJs {
-            index,
-            event_type: "stable".into(),
-            description: format!("{} is stable", nuclide.notation()),
-            nuclide: NuclideJs::from_nuclide(nuclide),
-            detail: None,
-        },
+        } => {
+            let (nuclide_is_stable, nuclide_half_life_s) = nuclide_timing(sim, daughter);
+            StepJs {
+                index,
+                event_type: "decay".into(),
+                description: format!(
+                    "{} undergoes {} decay, producing {}",
+                    parent.notation(),
+                    decay_mode_name(mode),
+                    daughter.notation()
+                ),
+                nuclide: NuclideJs::from_nuclide(daughter),
+                nuclide_is_stable,
+                nuclide_half_life_s,
+                detail: Some(StepDetail {
+                    target: None,
+                    energy: None,
+                    light_fragment: None,
+                    heavy_fragment: None,
+                    neutrons_released: None,
+                    decay_mode: Some(decay_mode_name(mode).into()),
+                    parent: Some(NuclideJs::from_nuclide(parent)),
+                }),
+            }
+        }
+        SimEvent::Stable { nuclide } => {
+            let (nuclide_is_stable, nuclide_half_life_s) = nuclide_timing(sim, nuclide);
+            StepJs {
+                index,
+                event_type: "stable".into(),
+                description: format!("{} is stable", nuclide.notation()),
+                nuclide: NuclideJs::from_nuclide(nuclide),
+                nuclide_is_stable,
+                nuclide_half_life_s,
+                detail: None,
+            }
+        }
     }
 }
 
 fn build_sim_state(sim: &CoreSim, following_heavy: bool) -> SimStateJs {
     let event = sim.current_event().expect("sim should have state");
-    let step = event_to_step(sim.cursor(), event);
+    let step = event_to_step(sim.cursor(), event, sim);
     SimStateJs {
         cursor: sim.cursor(),
         step_count: sim.step_count(),
@@ -198,7 +237,7 @@ fn all_steps_vec(sim: &CoreSim) -> Vec<StepJs> {
         .steps()
         .iter()
         .enumerate()
-        .map(|(i, e)| event_to_step(i, e))
+        .map(|(i, e)| event_to_step(i, e, sim))
         .collect()
 }
 
@@ -414,7 +453,11 @@ impl SimSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nuclear_sim::{DecayMode, NeutronEnergy, Nuclide, SimEvent};
+    use nuclear_sim::{build_extracted_database, DecayMode, NeutronEnergy, Nuclide, SimEvent};
+
+    fn test_sim() -> CoreSim {
+        CoreSim::new(build_extracted_database())
+    }
 
     #[test]
     fn sim_version_matches_core() {
@@ -446,18 +489,22 @@ mod tests {
 
     #[test]
     fn event_to_step_start() {
-        let n = Nuclide::try_new(6, 6).unwrap();
-        let step = event_to_step(0, &SimEvent::Start { nuclide: n });
+        let sim = test_sim();
+        let n = Nuclide::try_new(6, 8).unwrap();
+        let step = event_to_step(0, &SimEvent::Start { nuclide: n }, &sim);
         assert_eq!(step.index, 0);
         assert_eq!(step.event_type, "start");
         assert_eq!(step.nuclide.z, 6);
-        assert_eq!(step.nuclide.n, 6);
+        assert_eq!(step.nuclide.n, 8);
         assert!(step.description.contains("C"));
         assert!(step.detail.is_none());
+        assert!(!step.nuclide_is_stable);
+        assert!(step.nuclide_half_life_s.is_some());
     }
 
     #[test]
     fn event_to_step_neutron_absorbed_slow_and_fast() {
+        let sim = test_sim();
         let target = Nuclide::try_new(92, 143).unwrap();
         let compound = Nuclide::try_new(92, 144).unwrap();
         for (energy, label) in [
@@ -471,6 +518,7 @@ mod tests {
                     energy,
                     compound,
                 },
+                &sim,
             );
             assert_eq!(step.event_type, "neutron-absorbed");
             assert_eq!(step.nuclide, NuclideJs::from_nuclide(&compound));
@@ -483,6 +531,7 @@ mod tests {
 
     #[test]
     fn event_to_step_fission() {
+        let sim = test_sim();
         let parent = Nuclide::try_new(92, 143).unwrap();
         let light = Nuclide::try_new(56, 85).unwrap();
         let heavy = Nuclide::try_new(36, 55).unwrap();
@@ -494,6 +543,7 @@ mod tests {
                 heavy,
                 neutrons_released: 2,
             },
+            &sim,
         );
         assert_eq!(step.event_type, "fission");
         assert_eq!(step.nuclide, NuclideJs::from_nuclide(&heavy));
@@ -512,6 +562,7 @@ mod tests {
 
     #[test]
     fn event_to_step_decay() {
+        let sim = test_sim();
         let parent = Nuclide::try_new(6, 8).unwrap();
         let daughter = Nuclide::try_new(7, 7).unwrap();
         let step = event_to_step(
@@ -521,6 +572,7 @@ mod tests {
                 mode: DecayMode::BetaMinus,
                 daughter,
             },
+            &sim,
         );
         assert_eq!(step.event_type, "decay");
         assert_eq!(step.nuclide, NuclideJs::from_nuclide(&daughter));
@@ -531,11 +583,14 @@ mod tests {
 
     #[test]
     fn event_to_step_stable() {
-        let n = Nuclide::try_new(26, 30).unwrap();
-        let step = event_to_step(3, &SimEvent::Stable { nuclide: n });
+        let sim = test_sim();
+        let n = Nuclide::try_new(7, 7).unwrap();
+        let step = event_to_step(3, &SimEvent::Stable { nuclide: n }, &sim);
         assert_eq!(step.event_type, "stable");
         assert_eq!(step.nuclide, NuclideJs::from_nuclide(&n));
         assert!(step.detail.is_none());
+        assert!(step.nuclide_is_stable);
+        assert!(step.nuclide_half_life_s.is_none());
     }
 
     #[test]
@@ -593,6 +648,8 @@ mod tests {
         let step = v["current_step"].as_object().unwrap();
         assert_eq!(step["event_type"], "start");
         assert!(step.get("nuclide").is_some());
+        assert_eq!(step["nuclide_is_stable"], false);
+        assert!(step.get("nuclide_half_life_s").is_some());
     }
 
     #[test]

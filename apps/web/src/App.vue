@@ -107,6 +107,72 @@ function eventIcon(type: string): string {
   }
 }
 
+const HALF_LIFE_INFINITY = "\u221e";
+
+function formatDecayMode(mode: string): string {
+  switch (mode) {
+    case "alpha":
+      return "\u03b1";
+    case "beta-minus":
+      return "\u03b2\u2212";
+    case "beta-plus":
+      return "\u03b2+";
+    case "electron-capture":
+      return "\u03b5 / EC";
+    case "isomeric-transition":
+      return "IT";
+    default:
+      return mode;
+  }
+}
+
+function formatHalfLife(seconds: number): string {
+  const minute = 60;
+  const hour = 3600;
+  const day = 24 * hour;
+  const year = 365.25 * day;
+  if (seconds >= year * 1e9) {
+    return `${(seconds / (year * 1e9)).toPrecision(3)} Gyr`;
+  }
+  if (seconds >= year * 1e6) {
+    return `${(seconds / (year * 1e6)).toPrecision(3)} Myr`;
+  }
+  if (seconds >= year * 1e3) {
+    return `${(seconds / (year * 1e3)).toPrecision(3)} kyr`;
+  }
+  if (seconds >= year) {
+    return `${Math.round(seconds / year).toLocaleString()} yr`;
+  }
+  if (seconds >= day) {
+    return `${(seconds / day).toFixed(1)} d`;
+  }
+  if (seconds >= hour) {
+    return `${(seconds / hour).toFixed(1)} h`;
+  }
+  if (seconds >= minute) {
+    return `${(seconds / minute).toFixed(1)} min`;
+  }
+  if (seconds >= 1) {
+    return `${seconds < 100 ? seconds.toPrecision(3) : Math.round(seconds).toLocaleString()} s`;
+  }
+  return `${seconds.toPrecision(2)} s`;
+}
+
+/** Half-life / stable (∞), or decay mode on decay steps — same column as event type. */
+function chainStepMeta(step: StepInfo): string {
+  if (step.event_type === "decay" && step.detail?.decay_mode) {
+    return formatDecayMode(step.detail.decay_mode);
+  }
+  if (step.nuclide_is_stable) {
+    return HALF_LIFE_INFINITY;
+  }
+  const hl = step.nuclide_half_life_s;
+  if (hl != null && Number.isFinite(hl)) {
+    return formatHalfLife(hl);
+  }
+  return "\u2014";
+}
+
 onMounted(async () => {
   try {
     const mod = await import("@wasm/nuclear_sim_wasm.js");
@@ -176,7 +242,17 @@ onMounted(async () => {
           >
             <span class="chain-icon" v-html="eventIcon(step.event_type)"></span>
             <span class="chain-label">{{ step.nuclide.notation }}</span>
-            <span class="chain-type">{{ step.event_type }}</span>
+            <div class="chain-action">
+              <span class="chain-type">{{ step.event_type }}</span>
+              <span
+                class="chain-meta"
+                :title="
+                  step.event_type === 'decay' && step.detail?.decay_mode
+                    ? 'Decay mode'
+                    : 'Half-life (stable = ' + HALF_LIFE_INFINITY + ')'
+                "
+              >{{ chainStepMeta(step) }}</span>
+            </div>
           </div>
         </div>
       </section>
@@ -329,14 +405,23 @@ onMounted(async () => {
   gap: 2px;
 }
 .chain-step {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(4.5rem, auto) 1fr;
   align-items: center;
-  gap: 0.6rem;
+  column-gap: 0.6rem;
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s;
   font-size: 0.9rem;
+}
+.chain-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 0.65rem;
+  min-width: 0;
+  justify-content: flex-start;
 }
 .chain-step:hover {
   background: #1c2128;
@@ -359,11 +444,20 @@ onMounted(async () => {
 }
 .chain-label {
   font-weight: 600;
-  min-width: 4.5rem;
 }
 .chain-type {
   color: #8b949e;
   font-size: 0.8rem;
+}
+.chain-meta {
+  font-size: 0.8rem;
+  color: #a371f7;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  min-width: 0;
+}
+.chain-step.stable .chain-meta {
+  color: #58a6ff;
 }
 
 /* -- Panel -- */
