@@ -3,9 +3,14 @@ import { onMounted, ref, computed } from "vue";
 import type { SimState, StepInfo } from "@wasm/nuclear_sim_wasm.js";
 import PeriodicTablePicker from "./components/PeriodicTablePicker.vue";
 import QuickPickList from "./components/QuickPickList.vue";
+import ChainView from "./components/ChainView.vue";
+import CardChainView from "./components/CardChainView.vue";
 
 type PickerView = "table" | "quick";
 const pickerView = ref<PickerView>("table");
+
+type ChainViewMode = "list" | "cards";
+const chainViewMode = ref<ChainViewMode>("list");
 
 const wasmVersion = ref("...");
 const wasmError = ref<string | null>(null);
@@ -96,83 +101,6 @@ function switchBranch(fragment: "light" | "heavy") {
   }
 }
 
-function eventIcon(type: string): string {
-  switch (type) {
-    case "start": return "&#9679;";
-    case "neutron-absorbed": return "&#10141;";
-    case "fission": return "&#10038;";
-    case "decay": return "&#8595;";
-    case "stable": return "&#9632;";
-    default: return "?";
-  }
-}
-
-const HALF_LIFE_INFINITY = "\u221e";
-
-function formatDecayMode(mode: string): string {
-  switch (mode) {
-    case "alpha":
-      return "\u03b1";
-    case "beta-minus":
-      return "\u03b2\u2212";
-    case "beta-plus":
-      return "\u03b2+";
-    case "electron-capture":
-      return "\u03b5 / EC";
-    case "isomeric-transition":
-      return "IT";
-    default:
-      return mode;
-  }
-}
-
-function formatHalfLife(seconds: number): string {
-  const minute = 60;
-  const hour = 3600;
-  const day = 24 * hour;
-  const year = 365.25 * day;
-  if (seconds >= year * 1e9) {
-    return `${(seconds / (year * 1e9)).toPrecision(3)} Gyr`;
-  }
-  if (seconds >= year * 1e6) {
-    return `${(seconds / (year * 1e6)).toPrecision(3)} Myr`;
-  }
-  if (seconds >= year * 1e3) {
-    return `${(seconds / (year * 1e3)).toPrecision(3)} kyr`;
-  }
-  if (seconds >= year) {
-    return `${Math.round(seconds / year).toLocaleString()} yr`;
-  }
-  if (seconds >= day) {
-    return `${(seconds / day).toFixed(1)} d`;
-  }
-  if (seconds >= hour) {
-    return `${(seconds / hour).toFixed(1)} h`;
-  }
-  if (seconds >= minute) {
-    return `${(seconds / minute).toFixed(1)} min`;
-  }
-  if (seconds >= 1) {
-    return `${seconds < 100 ? seconds.toPrecision(3) : Math.round(seconds).toLocaleString()} s`;
-  }
-  return `${seconds.toPrecision(2)} s`;
-}
-
-/** Half-life / stable (∞), or decay mode on decay steps — same column as event type. */
-function chainStepMeta(step: StepInfo): string {
-  if (step.event_type === "decay" && step.detail?.decay_mode) {
-    return formatDecayMode(step.detail.decay_mode);
-  }
-  if (step.nuclide_is_stable) {
-    return HALF_LIFE_INFINITY;
-  }
-  const hl = step.nuclide_half_life_s;
-  if (hl != null && Number.isFinite(hl)) {
-    return formatHalfLife(hl);
-  }
-  return "\u2014";
-}
-
 onMounted(async () => {
   try {
     const mod = await import("@wasm/nuclear_sim_wasm.js");
@@ -225,36 +153,26 @@ onMounted(async () => {
     <main class="main">
       <!-- Left: chain visualization -->
       <section class="viewport" aria-label="Reaction chain">
+        <div class="chain-view-toggle" v-if="simState">
+          <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'list' }" @click="chainViewMode = 'list'">List</button>
+          <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'cards' }" @click="chainViewMode = 'cards'">Cards</button>
+        </div>
         <div v-if="!simState" class="viewport-placeholder">
           Choose an isotope to begin.
         </div>
-        <div v-else class="chain">
-          <div
-            v-for="step in allSteps"
-            :key="step.index"
-            class="chain-step"
-            :class="{
-              active: step.index === simState.cursor,
-              fission: step.event_type === 'fission',
-              stable: step.event_type === 'stable',
-            }"
-            @click="goToStep(step.index)"
-          >
-            <span class="chain-icon" v-html="eventIcon(step.event_type)"></span>
-            <span class="chain-label">{{ step.nuclide.notation }}</span>
-            <div class="chain-action">
-              <span class="chain-type">{{ step.event_type }}</span>
-              <span
-                class="chain-meta"
-                :title="
-                  step.event_type === 'decay' && step.detail?.decay_mode
-                    ? 'Decay mode'
-                    : 'Half-life (stable = ' + HALF_LIFE_INFINITY + ')'
-                "
-              >{{ chainStepMeta(step) }}</span>
-            </div>
-          </div>
-        </div>
+        <ChainView
+          v-else-if="chainViewMode === 'list'"
+          :steps="allSteps"
+          :cursor="simState.cursor"
+          @go-to-step="goToStep"
+        />
+        <CardChainView
+          v-else
+          :steps="allSteps"
+          :cursor="simState.cursor"
+          :following-heavy="simState.following_heavy"
+          @go-to-step="goToStep"
+        />
       </section>
 
       <!-- Right: controls and details -->
@@ -399,65 +317,30 @@ onMounted(async () => {
   font-size: 0.95rem;
 }
 
-.chain {
+/* -- Chain view toggle -- */
+.chain-view-toggle {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  padding: 0.5rem 0.75rem 0;
 }
-.chain-step {
-  display: grid;
-  grid-template-columns: auto minmax(4.5rem, auto) 1fr;
-  align-items: center;
-  column-gap: 0.6rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+.chain-toggle-btn {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  background: transparent;
+  color: #6e7681;
+  font-size: 0.75rem;
   cursor: pointer;
-  transition: background 0.15s;
-  font-size: 0.9rem;
+  transition: color 0.12s, border-color 0.12s;
 }
-.chain-action {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.45rem 0.65rem;
-  min-width: 0;
-  justify-content: flex-start;
+.chain-toggle-btn:hover {
+  color: #e6edf3;
+  border-color: #484f58;
 }
-.chain-step:hover {
-  background: #1c2128;
-}
-.chain-step.active {
-  background: #1f6feb33;
-  outline: 1px solid #1f6feb;
-}
-.chain-step.fission {
-  border-left: 3px solid #f0883e;
-}
-.chain-step.stable {
-  border-left: 3px solid #3fb950;
-}
-.chain-icon {
-  font-size: 0.85rem;
-  width: 1.2rem;
-  text-align: center;
-  color: #8b949e;
-}
-.chain-label {
-  font-weight: 600;
-}
-.chain-type {
-  color: #8b949e;
-  font-size: 0.8rem;
-}
-.chain-meta {
-  font-size: 0.8rem;
-  color: #a371f7;
-  font-variant-numeric: tabular-nums;
-  text-align: left;
-  min-width: 0;
-}
-.chain-step.stable .chain-meta {
-  color: #58a6ff;
+.chain-toggle-btn.active {
+  color: #e6edf3;
+  border-color: #58a6ff;
+  background: #1f6feb18;
 }
 
 /* -- Panel -- */
