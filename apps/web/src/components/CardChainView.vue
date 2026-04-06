@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import type { StepInfo } from "@wasm/nuclear_sim_wasm.js";
 
 const props = defineProps<{
   steps: StepInfo[];
   cursor: number;
   followingHeavy?: boolean;
+  session: unknown;
 }>();
 
 const emit = defineEmits<{
   (e: "go-to-step", index: number): void;
+  (e: "go-to-branch-step", leg: "light" | "heavy", fissionIndex: number, offset: number): void;
 }>();
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -22,11 +24,10 @@ interface CardItem {
 interface ConnectorItem {
   kind: "connector";
   label: string;
-  isFission: false;
 }
 interface FissionSplitItem {
   kind: "fission-split";
-  step: StepInfo;               // the fission step itself
+  step: StepInfo;
   followedIsHeavy: boolean;
   label: string;
   isActive: boolean;
@@ -34,32 +35,46 @@ interface FissionSplitItem {
 
 type RenderItem = CardItem | ConnectorItem | FissionSplitItem;
 
+type RenderBlock =
+  | { kind: "segment"; items: RenderItem[] }
+  | { kind: "fission"; step: StepInfo; followedIsHeavy: boolean; label: string; isActive: boolean }
+  | { kind: "parallel"; lightItems: RenderItem[]; heavyItems: RenderItem[] };
+
 // ── Formatters ───────────────────────────────────────────────────────────────
 
 const HALF_LIFE_INFINITY = "\u221e";
 
 function formatDecayMode(mode: string): string {
   switch (mode) {
-    case "alpha":              return "\u03b1";
-    case "beta-minus":         return "\u03b2\u2212";
-    case "beta-plus":          return "\u03b2+";
-    case "electron-capture":   return "\u03b5/EC";
-    case "isomeric-transition":return "IT";
-    default:                   return mode;
+    case "alpha":
+      return "\u03b1";
+    case "beta-minus":
+      return "\u03b2\u2212";
+    case "beta-plus":
+      return "\u03b2+";
+    case "electron-capture":
+      return "\u03b5/EC";
+    case "isomeric-transition":
+      return "IT";
+    default:
+      return mode;
   }
 }
 
 function formatHalfLife(s: number | null): string {
   if (s === null) return HALF_LIFE_INFINITY;
-  const min = 60, hr = 3600, day = 86400, yr = 365.25 * day;
+  const min = 60,
+    hr = 3600,
+    day = 86400,
+    yr = 365.25 * day;
   if (s >= yr * 1e9) return `${(s / (yr * 1e9)).toPrecision(3)} Gyr`;
   if (s >= yr * 1e6) return `${(s / (yr * 1e6)).toPrecision(3)} Myr`;
   if (s >= yr * 1e3) return `${(s / (yr * 1e3)).toPrecision(3)} kyr`;
-  if (s >= yr)       return `${Math.round(s / yr).toLocaleString()} yr`;
-  if (s >= day)      return `${(s / day).toFixed(1)} d`;
-  if (s >= hr)       return `${(s / hr).toFixed(1)} h`;
-  if (s >= min)      return `${(s / min).toFixed(1)} min`;
-  if (s >= 1)        return `${s < 100 ? s.toPrecision(3) : Math.round(s).toLocaleString()} s`;
+  if (s >= yr) return `${Math.round(s / yr).toLocaleString()} yr`;
+  if (s >= day) return `${(s / day).toFixed(1)} d`;
+  if (s >= hr) return `${(s / hr).toFixed(1)} h`;
+  if (s >= min) return `${(s / min).toFixed(1)} min`;
+  if (s >= 1) return `${s < 100 ? s.toPrecision(3) : Math.round(s).toLocaleString()} s`;
   return `${s.toPrecision(2)} s`;
 }
 
@@ -69,14 +84,10 @@ function halfLifeDisplay(step: StepInfo): string {
   return "\u2014";
 }
 
-// ── Render list ──────────────────────────────────────────────────────────────
-
-const renderItems = computed((): RenderItem[] => {
+function makeLineItems(steps: StepInfo[], cursor: number, cursorActive: boolean): RenderItem[] {
   const items: RenderItem[] = [];
-  const followedIsHeavy = props.followingHeavy ?? true;
-
-  for (const step of props.steps) {
-    const isActive = step.index === props.cursor;
+  for (const step of steps) {
+    const isActive = cursorActive && step.index === cursor;
 
     switch (step.event_type) {
       case "start":
@@ -84,104 +95,293 @@ const renderItems = computed((): RenderItem[] => {
         break;
 
       case "neutron-absorbed":
-        items.push({ kind: "connector", label: "+ neutron", isFission: false });
+        items.push({ kind: "connector", label: "+ neutron" });
         items.push({ kind: "card", step, isActive });
         break;
 
       case "fission": {
         const n = step.detail?.neutrons_released;
         const label = n ? `fission +${n}n` : "fission";
-        items.push({ kind: "fission-split", step, followedIsHeavy, label, isActive });
+        items.push({
+          kind: "fission-split",
+          step,
+          followedIsHeavy: props.followingHeavy ?? true,
+          label,
+          isActive,
+        });
         break;
       }
 
       case "decay": {
         const mode = step.detail?.decay_mode;
-        items.push({ kind: "connector", label: mode ? formatDecayMode(mode) : "decay", isFission: false });
+        items.push({
+          kind: "connector",
+          label: mode ? formatDecayMode(mode) : "decay",
+        });
         items.push({ kind: "card", step, isActive });
         break;
       }
 
       case "stable":
-        items.push({ kind: "connector", label: "", isFission: false });
+        items.push({ kind: "connector", label: "" });
         items.push({ kind: "card", step, isActive });
         break;
     }
   }
-
   return items;
+}
+
+const fissionIndex = computed(() => props.steps.findIndex((s) => s.event_type === "fission"));
+
+const followedTail = computed(() => {
+  const fi = fissionIndex.value;
+  if (fi < 0) return [];
+  return props.steps.slice(fi + 1);
 });
+
+const lightPreview = ref<StepInfo[]>([]);
+const heavyPreview = ref<StepInfo[]>([]);
+
+watch(
+  () => [props.steps, props.session, fissionIndex.value] as const,
+  () => {
+    const fi = fissionIndex.value;
+    const session = props.session as { decay_chain_preview?: (z: number, n: number) => StepInfo[] } | null;
+    if (fi < 0 || !session?.decay_chain_preview) {
+      lightPreview.value = [];
+      heavyPreview.value = [];
+      return;
+    }
+    const f = props.steps[fi];
+    const l = f?.detail?.light_fragment;
+    const h = f?.detail?.heavy_fragment;
+    if (!l || !h) {
+      lightPreview.value = [];
+      heavyPreview.value = [];
+      return;
+    }
+    try {
+      lightPreview.value = session.decay_chain_preview(l.z, l.n);
+      heavyPreview.value = session.decay_chain_preview(h.z, h.n);
+    } catch {
+      lightPreview.value = [];
+      heavyPreview.value = [];
+    }
+  },
+  { immediate: true, deep: true }
+);
+
+const fh = computed(() => props.followingHeavy ?? true);
+
+const lightLegSteps = computed(() => (fh.value ? lightPreview.value : followedTail.value));
+const heavyLegSteps = computed(() => (fh.value ? followedTail.value : heavyPreview.value));
+
+const renderBlocks = computed((): RenderBlock[] => {
+  const fi = fissionIndex.value;
+  const cur = props.cursor;
+
+  if (fi < 0) {
+    return [{ kind: "segment", items: makeLineItems(props.steps, cur, true) }];
+  }
+
+  const fissionStep = props.steps[fi]!;
+  const n = fissionStep.detail?.neutrons_released;
+  const label = n ? `fission +${n}n` : "fission";
+
+  return [
+    { kind: "segment", items: makeLineItems(props.steps.slice(0, fi), cur, true) },
+    {
+      kind: "fission",
+      step: fissionStep,
+      followedIsHeavy: fh.value,
+      label,
+      isActive: fissionStep.index === cur,
+    },
+    {
+      kind: "parallel",
+      lightItems: makeLineItems(lightLegSteps.value, cur, !fh.value),
+      heavyItems: makeLineItems(heavyLegSteps.value, cur, fh.value),
+    },
+  ];
+});
+
+function onSegmentCardClick(step: StepInfo) {
+  emit("go-to-step", step.index);
+}
+
+function onLegCardClick(leg: "light" | "heavy", step: StepInfo) {
+  const fi = fissionIndex.value;
+  if (fi < 0) return;
+  const preview =
+    (leg === "light" && fh.value) || (leg === "heavy" && !fh.value);
+  if (preview) {
+    emit("go-to-branch-step", leg, fi, step.index);
+  } else {
+    emit("go-to-step", step.index);
+  }
+}
+
+function onFissionFragClick(stepIndex: number) {
+  emit("go-to-step", stepIndex);
+}
 </script>
 
 <template>
   <div class="card-chain">
-    <template v-for="(item, idx) in renderItems" :key="idx">
+    <template v-for="(block, bi) in renderBlocks" :key="bi">
+      <!-- Linear segment (prefix or full chain when no split) -->
+      <template v-if="block.kind === 'segment'">
+        <template v-for="(item, idx) in block.items" :key="'s-' + bi + '-' + idx">
+          <div
+            v-if="item.kind === 'card'"
+            class="iso-card"
+            :class="{
+              active: item.isActive,
+              stable: item.step.nuclide_is_stable,
+            }"
+            @click="onSegmentCardClick(item.step)"
+          >
+            <div class="card-notation">{{ item.step.nuclide.notation }}</div>
+            <div class="card-hl">{{ halfLifeDisplay(item.step) }}</div>
+          </div>
 
-      <!-- Isotope card -->
-      <div
-        v-if="item.kind === 'card'"
-        class="iso-card"
-        :class="{
-          active: item.isActive,
-          stable: item.step.nuclide_is_stable,
-        }"
-        @click="emit('go-to-step', item.step.index)"
-      >
-        <div class="card-notation">{{ item.step.nuclide.notation }}</div>
-        <div class="card-hl">{{ halfLifeDisplay(item.step) }}</div>
-      </div>
+          <div v-else-if="item.kind === 'connector'" class="connector">
+            <div class="connector-stem"></div>
+            <div class="connector-label" v-if="item.label">{{ item.label }}</div>
+            <div class="connector-arrow">&#8595;</div>
+          </div>
 
-      <!-- Straight connector (decay / neutron / stable) -->
-      <div v-else-if="item.kind === 'connector'" class="connector">
-        <div class="connector-stem"></div>
-        <div class="connector-label" v-if="item.label">{{ item.label }}</div>
-        <div class="connector-arrow">&#8595;</div>
-      </div>
+          <!-- Nested fission in linear segment (rare); keep old single-column fan -->
+          <div v-else-if="item.kind === 'fission-split'" class="fission-split fission-split-inline">
+            <div class="fan-head">
+              <div class="fan-stem"></div>
+              <div class="fan-label">{{ item.label }}</div>
+              <div class="fan-arrows">
+                <span class="fan-arrow-left">&#8601;</span>
+                <span class="fan-arrow-right">&#8600;</span>
+              </div>
+            </div>
+            <div class="frag-row">
+              <div
+                class="frag-card"
+                :class="{
+                  followed: !item.followedIsHeavy,
+                  unfollowed: item.followedIsHeavy,
+                  active: item.isActive && !item.followedIsHeavy,
+                }"
+                @click="onFissionFragClick(item.step.index)"
+              >
+                <div class="frag-tag">light</div>
+                <div class="card-notation">{{ item.step.detail?.light_fragment?.notation }}</div>
+              </div>
+              <div
+                class="frag-card"
+                :class="{
+                  followed: item.followedIsHeavy,
+                  unfollowed: !item.followedIsHeavy,
+                  active: item.isActive && item.followedIsHeavy,
+                }"
+                @click="onFissionFragClick(item.step.index)"
+              >
+                <div class="frag-tag">heavy</div>
+                <div class="card-notation">{{ item.step.detail?.heavy_fragment?.notation }}</div>
+              </div>
+            </div>
+            <div class="frag-continuation" :class="{ 'is-heavy': item.followedIsHeavy }">
+              <div class="continuation-stem"></div>
+            </div>
+          </div>
+        </template>
+      </template>
 
-      <!-- Fission split -->
-      <div v-else-if="item.kind === 'fission-split'" class="fission-split">
-        <!-- fan label + arrows -->
+      <!-- Standalone fission row before parallel legs -->
+      <div v-else-if="block.kind === 'fission'" class="fission-split fission-split-parallel">
         <div class="fan-head">
           <div class="fan-stem"></div>
-          <div class="fan-label">{{ item.label }}</div>
+          <div class="fan-label">{{ block.label }}</div>
           <div class="fan-arrows">
             <span class="fan-arrow-left">&#8601;</span>
             <span class="fan-arrow-right">&#8600;</span>
           </div>
         </div>
-        <!-- fragment cards side by side -->
         <div class="frag-row">
           <div
             class="frag-card"
             :class="{
-              followed: !item.followedIsHeavy,
-              unfollowed: item.followedIsHeavy,
-              active: item.isActive && !item.followedIsHeavy,
+              followed: !block.followedIsHeavy,
+              unfollowed: block.followedIsHeavy,
+              active: block.isActive && !block.followedIsHeavy,
             }"
-            @click="emit('go-to-step', item.step.index)"
+            @click="onFissionFragClick(block.step.index)"
           >
             <div class="frag-tag">light</div>
-            <div class="card-notation">{{ item.step.detail?.light_fragment?.notation }}</div>
+            <div class="card-notation">{{ block.step.detail?.light_fragment?.notation }}</div>
           </div>
           <div
             class="frag-card"
             :class="{
-              followed: item.followedIsHeavy,
-              unfollowed: !item.followedIsHeavy,
-              active: item.isActive && item.followedIsHeavy,
+              followed: block.followedIsHeavy,
+              unfollowed: !block.followedIsHeavy,
+              active: block.isActive && block.followedIsHeavy,
             }"
-            @click="emit('go-to-step', item.step.index)"
+            @click="onFissionFragClick(block.step.index)"
           >
             <div class="frag-tag">heavy</div>
-            <div class="card-notation">{{ item.step.detail?.heavy_fragment?.notation }}</div>
+            <div class="card-notation">{{ block.step.detail?.heavy_fragment?.notation }}</div>
           </div>
-        </div>
-        <!-- continuation stem from the followed fragment down to the next connector -->
-        <div class="frag-continuation" :class="{ 'is-heavy': item.followedIsHeavy }">
-          <div class="continuation-stem"></div>
         </div>
       </div>
 
+      <!-- Two decay columns after fission -->
+      <div v-else-if="block.kind === 'parallel'" class="parallel-columns">
+        <div class="parallel-column" :class="{ dimmed: fh }">
+          <div class="column-label">Light</div>
+          <div class="column-stem"></div>
+          <template v-for="(item, idx) in block.lightItems" :key="'L-' + idx">
+            <div
+              v-if="item.kind === 'card'"
+              class="iso-card"
+              :class="{
+                active: item.isActive,
+                stable: item.step.nuclide_is_stable,
+              }"
+              @click="onLegCardClick('light', item.step)"
+            >
+              <div class="card-notation">{{ item.step.nuclide.notation }}</div>
+              <div class="card-hl">{{ halfLifeDisplay(item.step) }}</div>
+            </div>
+            <div v-else-if="item.kind === 'connector'" class="connector">
+              <div class="connector-stem"></div>
+              <div class="connector-label" v-if="item.label">{{ item.label }}</div>
+              <div class="connector-arrow">&#8595;</div>
+            </div>
+          </template>
+        </div>
+
+        <div class="parallel-column" :class="{ dimmed: !fh }">
+          <div class="column-label">Heavy</div>
+          <div class="column-stem"></div>
+          <template v-for="(item, idx) in block.heavyItems" :key="'H-' + idx">
+            <div
+              v-if="item.kind === 'card'"
+              class="iso-card"
+              :class="{
+                active: item.isActive,
+                stable: item.step.nuclide_is_stable,
+              }"
+              @click="onLegCardClick('heavy', item.step)"
+            >
+              <div class="card-notation">{{ item.step.nuclide.notation }}</div>
+              <div class="card-hl">{{ halfLifeDisplay(item.step) }}</div>
+            </div>
+            <div v-else-if="item.kind === 'connector'" class="connector">
+              <div class="connector-stem"></div>
+              <div class="connector-label" v-if="item.label">{{ item.label }}</div>
+              <div class="connector-arrow">&#8595;</div>
+            </div>
+          </template>
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -194,6 +394,9 @@ const renderItems = computed((): RenderItem[] => {
   align-items: center;
   padding: 1.25rem 1rem;
   gap: 0;
+  width: 100%;
+  max-width: 52rem;
+  margin: 0 auto;
 }
 
 /* ── Isotope card ── */
@@ -269,6 +472,10 @@ const renderItems = computed((): RenderItem[] => {
   align-items: center;
 }
 
+.fission-split-parallel {
+  margin-bottom: 0.25rem;
+}
+
 .fan-head {
   display: flex;
   flex-direction: column;
@@ -323,7 +530,7 @@ const renderItems = computed((): RenderItem[] => {
   background: #f0883e0e;
 }
 .frag-card.unfollowed {
-  opacity: 0.4;
+  opacity: 0.55;
 }
 .frag-card.active {
   outline: 1px solid #f0883e;
@@ -337,15 +544,13 @@ const renderItems = computed((): RenderItem[] => {
   margin-bottom: 0.15rem;
 }
 
-/* Stem from the followed fragment card down to the next connector */
 .frag-continuation {
   width: 100%;
   display: flex;
-  /* shift center to align under heavy (right) or light (left) fragment */
   justify-content: center;
 }
 .frag-continuation.is-heavy {
-  padding-left: calc(7.5rem + 1rem); /* card width + gap */
+  padding-left: calc(7.5rem + 1rem);
 }
 .frag-continuation:not(.is-heavy) {
   padding-right: calc(7.5rem + 1rem);
@@ -354,5 +559,49 @@ const renderItems = computed((): RenderItem[] => {
   width: 1px;
   height: 10px;
   background: #30363d;
+}
+
+/* ── Parallel columns after fission ── */
+.parallel-columns {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1.5rem;
+  width: 100%;
+  padding: 0 0.5rem 1rem;
+}
+
+.parallel-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  max-width: 12rem;
+  transition: opacity 0.15s;
+}
+
+.parallel-column.dimmed {
+  opacity: 0.45;
+}
+
+.parallel-column:not(.dimmed) {
+  opacity: 1;
+}
+
+.column-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6e7681;
+  margin-bottom: 0.2rem;
+}
+
+.column-stem {
+  width: 1px;
+  height: 12px;
+  background: #30363d;
+  margin-bottom: 2px;
 }
 </style>

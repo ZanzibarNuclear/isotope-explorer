@@ -101,6 +101,20 @@ function switchBranch(fragment: "light" | "heavy") {
   }
 }
 
+function onGoToBranchStep(leg: "light" | "heavy", fissionIndex: number, offset: number) {
+  if (!session.value) return;
+  try {
+    const wantHeavy = leg === "heavy";
+    if (simState.value && simState.value.following_heavy !== wantHeavy) {
+      session.value.switch_branch(leg);
+    }
+    session.value.go_to_step(fissionIndex + 1 + offset);
+    refreshState();
+  } catch (e) {
+    wasmError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
 onMounted(async () => {
   try {
     const mod = await import("@wasm/nuclear_sim_wasm.js");
@@ -168,10 +182,12 @@ onMounted(async () => {
         />
         <CardChainView
           v-else
+          :session="session"
           :steps="allSteps"
           :cursor="simState.cursor"
           :following-heavy="simState.following_heavy"
           @go-to-step="goToStep"
+          @go-to-branch-step="onGoToBranchStep"
         />
       </section>
 

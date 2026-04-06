@@ -11,6 +11,8 @@ declare module "@wasm/nuclear_sim_wasm.js" {
     induce_decay(): void;
     switch_branch(fragment: "light" | "heavy"): void;
     all_nuclide_keys(): { z: number; n: number }[];
+    /** Auto-follow decay preview for a fragment (parallel card columns). */
+    decay_chain_preview(z: number, n: number): StepInfo[];
     step_forward(): void;
     step_back(): void;
     go_to_step(index: number): void;

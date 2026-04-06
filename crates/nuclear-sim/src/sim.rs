@@ -223,8 +223,14 @@ impl Simulation {
         self.follow_decay_chain(product.heavy);
     }
 
-    /// Follow a nuclide's decay chain until it reaches stability or we run out of data.
-    fn follow_decay_chain(&mut self, start: Nuclide) {
+    /// Simulate auto-follow decay from a nuclide without mutating step history (for UI previews).
+    pub fn decay_chain_events(&self, start: Nuclide) -> Vec<SimEvent> {
+        Self::build_decay_chain_events(&self.db, start)
+    }
+
+    /// Same rules as [`Self::follow_decay_chain`], but returns events only.
+    fn build_decay_chain_events(db: &NuclideDatabase, start: Nuclide) -> Vec<SimEvent> {
+        let mut out = Vec::new();
         let mut current = start;
         let max_steps = 50; // safety limit
         let mut count = 0;
@@ -235,32 +241,25 @@ impl Simulation {
             }
             count += 1;
 
-            let data = match self.db.get(&current) {
+            let data = match db.get(&current) {
                 Some(d) => d.clone(),
                 None => {
-                    // Unknown nuclide -- treat as stable (we don't have data for it)
-                    self.steps.push(SimEvent::Stable { nuclide: current });
-                    self.cursor = self.steps.len() - 1;
+                    out.push(SimEvent::Stable { nuclide: current });
                     break;
                 }
             };
 
             match data.stability {
                 Stability::Stable => {
-                    self.steps.push(SimEvent::Stable { nuclide: current });
-                    self.cursor = self.steps.len() - 1;
+                    out.push(SimEvent::Stable { nuclide: current });
                     break;
                 }
                 Stability::Radioactive => {
                     if data.decay_modes.is_empty() {
-                        // No decay data -- treat as stable
-                        self.steps.push(SimEvent::Stable { nuclide: current });
-                        self.cursor = self.steps.len() - 1;
+                        out.push(SimEvent::Stable { nuclide: current });
                         break;
                     }
 
-                    // Pick the dominant decay mode (highest branching fraction).
-                    // TODO: use RNG weighted by branching fractions for variety.
                     let branch = data
                         .decay_modes
                         .iter()
@@ -270,23 +269,31 @@ impl Simulation {
                     let daughter = match branch.mode.daughter(&current) {
                         Some(d) => d,
                         None => {
-                            // Decay math failed (shouldn't happen with valid data)
-                            self.steps.push(SimEvent::Stable { nuclide: current });
-                            self.cursor = self.steps.len() - 1;
+                            out.push(SimEvent::Stable { nuclide: current });
                             break;
                         }
                     };
 
-                    self.steps.push(SimEvent::Decay {
+                    out.push(SimEvent::Decay {
                         parent: current,
                         mode: branch.mode,
                         daughter,
                     });
-                    self.cursor = self.steps.len() - 1;
 
                     current = daughter;
                 }
             }
+        }
+
+        out
+    }
+
+    /// Follow a nuclide's decay chain until it reaches stability or we run out of data.
+    fn follow_decay_chain(&mut self, start: Nuclide) {
+        let chain = Self::build_decay_chain_events(&self.db, start);
+        for e in chain {
+            self.steps.push(e);
+            self.cursor = self.steps.len() - 1;
         }
     }
 
@@ -540,6 +547,22 @@ mod tests {
         // Should now end at Zr-92
         assert!(sim.is_complete());
         assert_eq!(sim.current_nuclide().notation(), "Zr-92");
+    }
+
+    #[test]
+    fn decay_chain_events_matches_followed_tail_after_fission() {
+        let mut sim = new_sim();
+        sim.set_isotope(92, 143).unwrap();
+        sim.fire_neutron(NeutronEnergy::Slow).unwrap();
+
+        let branch = sim.fission_branches()[0].clone();
+        let fi = branch.fission_step;
+        let preview = sim.decay_chain_events(branch.heavy);
+        let tail: Vec<SimEvent> = sim.steps()[fi + 1..].to_vec();
+        assert_eq!(preview.len(), tail.len(), "preview should match auto-follow tail");
+        for (a, b) in preview.iter().zip(tail.iter()) {
+            assert_eq!(a.resulting_nuclide(), b.resulting_nuclide());
+        }
     }
 
     #[test]

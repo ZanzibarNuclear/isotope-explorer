@@ -415,6 +415,18 @@ impl SimSession {
         serde_wasm_bindgen::to_value(&all_steps_vec(&self.sim)).unwrap()
     }
 
+    /// Auto-follow decay chain from a nuclide (same rules as after fission), for parallel UI legs.
+    pub fn decay_chain_preview(&self, z: u16, n: u16) -> Result<JsValue, JsValue> {
+        let nuclide = Nuclide::try_new(z, n).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let events = self.sim.decay_chain_events(nuclide);
+        let steps: Vec<StepJs> = events
+            .iter()
+            .enumerate()
+            .map(|(i, e)| event_to_step(i, e, &self.sim))
+            .collect();
+        Ok(serde_wasm_bindgen::to_value(&steps).unwrap())
+    }
+
     /// Return all (Z, N) pairs in the database as [{z, n}].
     pub fn all_nuclide_keys(&self) -> JsValue {
         let keys: Vec<NuclideKeyJs> = self

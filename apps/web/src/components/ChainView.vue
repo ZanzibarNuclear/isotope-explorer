@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { StepInfo } from "@wasm/nuclear_sim_wasm.js";
 
-const props = defineProps<{
+defineProps<{
   steps: StepInfo[];
   cursor: number;
 }>();
