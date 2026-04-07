@@ -7,10 +7,10 @@ import ChainView from "./components/ChainView.vue";
 import CardChainView from "./components/CardChainView.vue";
 
 type PickerView = "table" | "quick";
-const pickerView = ref<PickerView>("table");
+const pickerView = ref<PickerView>("quick");
 
 type ChainViewMode = "list" | "cards";
-const chainViewMode = ref<ChainViewMode>("list");
+const chainViewMode = ref<ChainViewMode>("cards");
 
 const wasmVersion = ref("...");
 const wasmError = ref<string | null>(null);
