@@ -144,17 +144,23 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
         }
         SimEvent::Fission {
             parent,
+            energy,
             light,
             heavy,
             neutrons_released,
         } => {
+            let energy_label = match energy {
+                NeutronEnergy::Slow => "slow",
+                NeutronEnergy::Fast => "fast",
+            };
             let (nuclide_is_stable, nuclide_half_life_s) = nuclide_timing(sim, heavy);
             StepJs {
                 index,
                 event_type: "fission".into(),
                 description: format!(
-                    "{} splits into {} + {} + {} neutrons",
+                    "{} absorbs a {} neutron and splits into {} + {} + {} neutrons",
                     parent.notation(),
+                    energy_label,
                     light.notation(),
                     heavy.notation(),
                     neutrons_released
@@ -164,7 +170,7 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
                 nuclide_half_life_s,
                 detail: Some(StepDetail {
                     target: None,
-                    energy: None,
+                    energy: Some(energy_label.into()),
                     light_fragment: Some(NuclideJs::from_nuclide(light)),
                     heavy_fragment: Some(NuclideJs::from_nuclide(heavy)),
                     neutrons_released: Some(*neutrons_released),
@@ -551,6 +557,7 @@ mod tests {
             2,
             &SimEvent::Fission {
                 parent,
+                energy: NeutronEnergy::Slow,
                 light,
                 heavy,
                 neutrons_released: 2,

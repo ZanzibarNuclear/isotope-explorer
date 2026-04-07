@@ -35,8 +35,11 @@ pub enum SimEvent {
         compound: Nuclide,
     },
     /// Compound nucleus underwent fission.
+    /// Neutron-induced fission: the target absorbs a neutron and immediately
+    /// splits — no intermediate compound nucleus is formed as a separate step.
     Fission {
         parent: Nuclide,
+        energy: NeutronEnergy,
         light: Nuclide,
         heavy: Nuclide,
         neutrons_released: u8,
@@ -171,7 +174,21 @@ impl Simulation {
 
         let target = self.current_nuclide();
 
-        // Absorb the neutron: Z stays the same, N+1
+        // Check the target for fissile flag before absorbing the neutron.
+        // In fission, there is no intermediate compound nucleus — the target
+        // absorbs the neutron and splits in a single action.
+        let target_data = self.db.get(&target);
+
+        if let Some(data) = target_data {
+            if data.fissile && energy == NeutronEnergy::Slow && !data.fission_products.is_empty() {
+                let product = &data.fission_products[0];
+                self.resolve_fission(target, energy, product.clone());
+                return Ok(());
+            }
+        }
+
+        // No fission — absorb the neutron to form a compound nucleus, then
+        // resolve its decay chain.
         let compound = Nuclide::try_new(target.z(), target.n() + 1)
             .map_err(|e| SimError::UnknownNuclide(e.to_string()))?;
 
@@ -182,30 +199,17 @@ impl Simulation {
         });
         self.cursor = self.steps.len() - 1;
 
-        // Now resolve what happens to the compound nucleus.
-        // Check the *target* for fissile flag (U-235 is fissile, the compound U-236 fissions).
-        let target_data = self.db.get(&target);
-
-        if let Some(data) = target_data {
-            if data.fissile && energy == NeutronEnergy::Slow && !data.fission_products.is_empty() {
-                // Fission! Use the first product pair for now.
-                let product = &data.fission_products[0];
-                self.resolve_fission(compound, product.clone());
-                return Ok(());
-            }
-        }
-
-        // No fission -- resolve the compound nucleus
         self.resolve_nuclide(compound);
         Ok(())
     }
 
     /// Resolve a fission event.
-    fn resolve_fission(&mut self, parent: Nuclide, product: FissionProduct) {
+    fn resolve_fission(&mut self, parent: Nuclide, energy: NeutronEnergy, product: FissionProduct) {
         let fission_step = self.steps.len();
 
         self.steps.push(SimEvent::Fission {
             parent,
+            energy,
             light: product.light,
             heavy: product.heavy,
             neutrons_released: product.neutrons_released,

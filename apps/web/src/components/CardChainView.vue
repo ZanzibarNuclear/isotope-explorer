@@ -101,7 +101,8 @@ function makeLineItems(steps: StepInfo[], cursor: number, cursorActive: boolean)
 
       case "fission": {
         const n = step.detail?.neutrons_released;
-        const label = n ? `fission +${n}n` : "fission";
+        const e = step.detail?.energy === "fast" ? "fast n" : "n";
+        const label = n ? `+ ${e} → fission +${n}n` : `+ ${e} → fission`;
         items.push({
           kind: "fission-split",
           step,
@@ -123,8 +124,8 @@ function makeLineItems(steps: StepInfo[], cursor: number, cursorActive: boolean)
       }
 
       case "stable":
-        items.push({ kind: "connector", label: "" });
-        items.push({ kind: "card", step, isActive });
+        // The stable isotope was already shown by the preceding decay card;
+        // skip to avoid a duplicate final card.
         break;
     }
   }
@@ -186,7 +187,8 @@ const renderBlocks = computed((): RenderBlock[] => {
 
   const fissionStep = props.steps[fi]!;
   const n = fissionStep.detail?.neutrons_released;
-  const label = n ? `fission +${n}n` : "fission";
+  const e = fissionStep.detail?.energy === "fast" ? "fast n" : "n";
+  const label = n ? `+ ${e} → fission +${n}n` : `+ ${e} → fission`;
 
   return [
     { kind: "segment", items: makeLineItems(props.steps.slice(0, fi), cur, true) },
