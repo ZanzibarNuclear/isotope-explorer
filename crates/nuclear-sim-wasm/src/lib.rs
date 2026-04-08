@@ -175,6 +175,13 @@ fn event_to_step(index: usize, event: &SimEvent) -> StepJs {
             nuclide: NuclideJs::from_nuclide(nuclide),
             detail: None,
         },
+        SimEvent::Unknown { nuclide } => StepJs {
+            index,
+            event_type: "unknown".into(),
+            description: format!("{} — no data available", nuclide.notation()),
+            nuclide: NuclideJs::from_nuclide(nuclide),
+            detail: None,
+        },
     }
 }
 

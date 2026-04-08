@@ -99,6 +99,7 @@ function eventIcon(type: string): string {
     case "fission": return "&#10038;";
     case "decay": return "&#8595;";
     case "stable": return "&#9632;";
+    case "unknown": return "??";
     default: return "?";
   }
 }
@@ -142,6 +143,7 @@ onMounted(async () => {
               active: step.index === simState.cursor,
               fission: step.event_type === 'fission',
               stable: step.event_type === 'stable',
+              unknown: step.event_type === 'unknown',
             }"
             @click="goToStep(step.index)"
           >
@@ -233,6 +235,9 @@ onMounted(async () => {
               </template>
             </dl>
           </div>
+          <p v-if="simState.current_step.event_type === 'unknown'" class="data-boundary-warning">
+            This nuclide is beyond the available nuclear data. No further interactions can be simulated.
+          </p>
         </div>
 
         <p class="version">sim v{{ wasmVersion }}</p>
@@ -321,6 +326,9 @@ onMounted(async () => {
 }
 .chain-step.stable {
   border-left: 3px solid #3fb950;
+}
+.chain-step.unknown {
+  border-left: 3px solid #f85149;
 }
 .chain-icon {
   font-size: 0.85rem;
@@ -489,6 +497,16 @@ onMounted(async () => {
 }
 .detail-props dd {
   margin: 0;
+}
+
+.data-boundary-warning {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: #f8514922;
+  border: 1px solid #f85149;
+  color: #f85149;
+  font-size: 0.825rem;
 }
 
 .error {

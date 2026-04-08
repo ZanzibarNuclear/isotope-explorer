@@ -51,6 +51,10 @@ pub enum SimEvent {
     Stable {
         nuclide: Nuclide,
     },
+    /// Nuclide has no data in the database -- chain ends here.
+    Unknown {
+        nuclide: Nuclide,
+    },
 }
 
 impl SimEvent {
@@ -62,6 +66,7 @@ impl SimEvent {
             SimEvent::Fission { heavy, .. } => *heavy, // default to heavy fragment
             SimEvent::Decay { daughter, .. } => *daughter,
             SimEvent::Stable { nuclide } => *nuclide,
+            SimEvent::Unknown { nuclide } => *nuclide,
         }
     }
 }
@@ -238,8 +243,8 @@ impl Simulation {
             let data = match self.db.get(&current) {
                 Some(d) => d.clone(),
                 None => {
-                    // Unknown nuclide -- treat as stable (we don't have data for it)
-                    self.steps.push(SimEvent::Stable { nuclide: current });
+                    // Unknown nuclide -- no data available
+                    self.steps.push(SimEvent::Unknown { nuclide: current });
                     self.cursor = self.steps.len() - 1;
                     break;
                 }
@@ -365,16 +370,16 @@ impl Simulation {
         });
         self.cursor = self.steps.len() - 1;
 
-        // If the daughter is stable, append a Stable event automatically
-        let daughter_stable = self
-            .db
-            .get(&daughter)
-            .map(|d| d.stability == Stability::Stable || d.decay_modes.is_empty())
-            .unwrap_or(true); // unknown nuclides treated as stable
-
-        if daughter_stable {
-            self.steps.push(SimEvent::Stable { nuclide: daughter });
+        // If the daughter is unknown or stable, append a terminal event
+        let daughter_data = self.db.get(&daughter);
+        if daughter_data.is_none() {
+            self.steps.push(SimEvent::Unknown { nuclide: daughter });
             self.cursor = self.steps.len() - 1;
+        } else if let Some(d) = daughter_data {
+            if d.stability == Stability::Stable || d.decay_modes.is_empty() {
+                self.steps.push(SimEvent::Stable { nuclide: daughter });
+                self.cursor = self.steps.len() - 1;
+            }
         }
 
         Ok(())
@@ -394,7 +399,10 @@ impl Simulation {
 
     /// Can a neutron be fired at the current nuclide?
     pub fn can_fire(&self) -> bool {
-        !self.steps.is_empty()
+        if self.steps.is_empty() {
+            return false;
+        }
+        self.db.get(&self.current_nuclide()).is_some()
     }
 
     // -- Navigation --
@@ -463,7 +471,7 @@ impl Simulation {
 
     /// Is the chain complete (ended at a stable nuclide)?
     pub fn is_complete(&self) -> bool {
-        matches!(self.steps.last(), Some(SimEvent::Stable { .. }))
+        matches!(self.steps.last(), Some(SimEvent::Stable { .. } | SimEvent::Unknown { .. }))
     }
 
     /// Look up data for a nuclide in the database.
@@ -637,5 +645,29 @@ mod tests {
         sim.go_to_step(1).unwrap();
         sim.fire_neutron(NeutronEnergy::Slow).unwrap();
         assert!(sim.step_count() > 1);
+    }
+
+    #[test]
+    fn unknown_nuclide_produces_unknown_event() {
+        let mut sim = new_sim();
+        sim.set_isotope(6, 8).unwrap(); // C-14
+        sim.fire_neutron(NeutronEnergy::Slow).unwrap();
+        // C-15 is not in stub DB — should get Unknown event, not Stable
+        let last = sim.steps().last().unwrap();
+        assert!(matches!(last, SimEvent::Unknown { .. }));
+        assert!(!sim.can_fire());
+        assert!(!sim.can_decay());
+    }
+
+    #[test]
+    fn can_fire_after_navigating_back_from_unknown() {
+        let mut sim = new_sim();
+        sim.set_isotope(6, 8).unwrap(); // C-14
+        sim.fire_neutron(NeutronEnergy::Slow).unwrap();
+        // Now at unknown C-15, can_fire should be false
+        assert!(!sim.can_fire());
+        // Navigate back to C-14 (known) — can_fire should be true
+        sim.go_to_step(0).unwrap();
+        assert!(sim.can_fire());
     }
 }
