@@ -404,8 +404,13 @@ impl Simulation {
     }
 
     /// Can a neutron be fired at the current nuclide?
+    /// Returns false when the current nuclide is not in the database (beyond known data).
     pub fn can_fire(&self) -> bool {
-        !self.steps.is_empty()
+        if self.steps.is_empty() {
+            return false;
+        }
+        let current = self.current_nuclide();
+        self.db.get(&current).is_some()
     }
 
     // -- Navigation --

@@ -79,6 +79,7 @@ function formatHalfLife(s: number | null): string {
 }
 
 function halfLifeDisplay(step: StepInfo): string {
+  if (!step.nuclide_in_database) return "??";
   if (step.nuclide_is_stable) return HALF_LIFE_INFINITY;
   if (step.nuclide_half_life_s != null) return formatHalfLife(step.nuclide_half_life_s);
   return "\u2014";
@@ -240,6 +241,7 @@ function onFissionFragClick(stepIndex: number) {
             :class="{
               active: item.isActive,
               stable: item.step.nuclide_is_stable,
+              unknown: !item.step.nuclide_in_database,
             }"
             @click="onSegmentCardClick(item.step)"
           >
@@ -425,6 +427,14 @@ function onFissionFragClick(stepIndex: number) {
 }
 .iso-card.stable.active {
   background: #3fb95015;
+}
+.iso-card.unknown {
+  border-color: #d29922;
+  border-style: dashed;
+  opacity: 0.7;
+}
+.iso-card.unknown .card-hl {
+  color: #d29922;
 }
 
 .card-notation {

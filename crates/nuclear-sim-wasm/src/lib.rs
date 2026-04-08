@@ -45,6 +45,8 @@ pub struct StepJs {
     pub nuclide: NuclideJs,
     /// Whether the nuclide shown in this row is stable in the database.
     pub nuclide_is_stable: bool,
+    /// Whether this nuclide exists in the simulation database.
+    pub nuclide_in_database: bool,
     /// Half-life in seconds when radioactive and known; omitted when stable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nuclide_half_life_s: Option<f64>,
@@ -81,10 +83,11 @@ fn decay_mode_name(mode: &DecayMode) -> &'static str {
     }
 }
 
-fn nuclide_timing(sim: &CoreSim, nuclide: &Nuclide) -> (bool, Option<f64>) {
-    sim.lookup(nuclide).map_or((false, None), |d| {
+fn nuclide_timing(sim: &CoreSim, nuclide: &Nuclide) -> (bool, bool, Option<f64>) {
+    sim.lookup(nuclide).map_or((false, false, None), |d| {
         (
             d.stability == Stability::Stable,
+            true,
             d.half_life_s,
         )
     })
@@ -93,13 +96,14 @@ fn nuclide_timing(sim: &CoreSim, nuclide: &Nuclide) -> (bool, Option<f64>) {
 fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
     match event {
         SimEvent::Start { nuclide } => {
-            let (nuclide_is_stable, nuclide_half_life_s) = nuclide_timing(sim, nuclide);
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, nuclide);
             StepJs {
                 index,
                 event_type: "start".into(),
                 description: format!("Starting with {}", nuclide.notation()),
                 nuclide: NuclideJs::from_nuclide(nuclide),
                 nuclide_is_stable,
+                nuclide_in_database,
                 nuclide_half_life_s,
                 detail: None,
             }
@@ -109,7 +113,7 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
             energy,
             compound,
         } => {
-            let (nuclide_is_stable, nuclide_half_life_s) = nuclide_timing(sim, compound);
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, compound);
             StepJs {
                 index,
                 event_type: "neutron-absorbed".into(),
@@ -124,6 +128,7 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
                 ),
                 nuclide: NuclideJs::from_nuclide(compound),
                 nuclide_is_stable,
+                nuclide_in_database,
                 nuclide_half_life_s,
                 detail: Some(StepDetail {
                     target: Some(NuclideJs::from_nuclide(target)),
@@ -153,7 +158,7 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
                 NeutronEnergy::Slow => "slow",
                 NeutronEnergy::Fast => "fast",
             };
-            let (nuclide_is_stable, nuclide_half_life_s) = nuclide_timing(sim, heavy);
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, heavy);
             StepJs {
                 index,
                 event_type: "fission".into(),
@@ -167,6 +172,7 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
                 ),
                 nuclide: NuclideJs::from_nuclide(heavy),
                 nuclide_is_stable,
+                nuclide_in_database,
                 nuclide_half_life_s,
                 detail: Some(StepDetail {
                     target: None,
@@ -184,7 +190,7 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
             mode,
             daughter,
         } => {
-            let (nuclide_is_stable, nuclide_half_life_s) = nuclide_timing(sim, daughter);
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, daughter);
             StepJs {
                 index,
                 event_type: "decay".into(),
@@ -196,6 +202,7 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
                 ),
                 nuclide: NuclideJs::from_nuclide(daughter),
                 nuclide_is_stable,
+                nuclide_in_database,
                 nuclide_half_life_s,
                 detail: Some(StepDetail {
                     target: None,
@@ -209,13 +216,14 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
             }
         }
         SimEvent::Stable { nuclide } => {
-            let (nuclide_is_stable, nuclide_half_life_s) = nuclide_timing(sim, nuclide);
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, nuclide);
             StepJs {
                 index,
                 event_type: "stable".into(),
                 description: format!("{} is stable", nuclide.notation()),
                 nuclide: NuclideJs::from_nuclide(nuclide),
                 nuclide_is_stable,
+                nuclide_in_database,
                 nuclide_half_life_s,
                 detail: None,
             }
@@ -517,6 +525,7 @@ mod tests {
         assert!(step.description.contains("C"));
         assert!(step.detail.is_none());
         assert!(!step.nuclide_is_stable);
+        assert!(step.nuclide_in_database);
         assert!(step.nuclide_half_life_s.is_some());
     }
 
@@ -609,6 +618,18 @@ mod tests {
         assert_eq!(step.nuclide, NuclideJs::from_nuclide(&n));
         assert!(step.detail.is_none());
         assert!(step.nuclide_is_stable);
+        assert!(step.nuclide_in_database);
+        assert!(step.nuclide_half_life_s.is_none());
+    }
+
+    #[test]
+    fn unknown_nuclide_not_in_database() {
+        let sim = test_sim();
+        // H-51 won't be in the database
+        let n = Nuclide::try_new(1, 50).unwrap();
+        let step = event_to_step(0, &SimEvent::Start { nuclide: n }, &sim);
+        assert!(!step.nuclide_in_database);
+        assert!(!step.nuclide_is_stable);
         assert!(step.nuclide_half_life_s.is_none());
     }
 
@@ -668,6 +689,7 @@ mod tests {
         assert_eq!(step["event_type"], "start");
         assert!(step.get("nuclide").is_some());
         assert_eq!(step["nuclide_is_stable"], false);
+        assert_eq!(step["nuclide_in_database"], true);
         assert!(step.get("nuclide_half_life_s").is_some());
     }
 
