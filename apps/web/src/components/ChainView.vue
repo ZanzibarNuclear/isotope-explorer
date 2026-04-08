@@ -51,6 +51,7 @@ function formatHalfLife(seconds: number): string {
 }
 
 function chainStepMeta(step: StepInfo): string {
+  if (!step.nuclide_in_database) return "??";
   if (step.event_type === "decay" && step.detail?.decay_mode) {
     return formatDecayMode(step.detail.decay_mode);
   }
@@ -71,6 +72,7 @@ function chainStepMeta(step: StepInfo): string {
         active: step.index === cursor,
         fission: step.event_type === 'fission',
         stable: step.event_type === 'stable',
+        unknown: !step.nuclide_in_database,
       }"
       @click="emit('go-to-step', step.index)"
     >
@@ -119,6 +121,10 @@ function chainStepMeta(step: StepInfo): string {
 }
 .chain-step.stable {
   border-left: 3px solid #3fb950;
+}
+.chain-step.unknown {
+  border-left: 3px dashed #d29922;
+  opacity: 0.7;
 }
 .chain-icon {
   font-size: 0.85rem;

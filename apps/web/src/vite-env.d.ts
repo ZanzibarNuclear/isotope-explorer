@@ -54,6 +54,8 @@ declare module "@wasm/nuclear_sim_wasm.js" {
     nuclide: NuclideInfo;
     /** Stable nuclide in DB → UI shows ∞ in the chain meta column (except decay rows). */
     nuclide_is_stable: boolean;
+    /** Whether this nuclide exists in the simulation database. */
+    nuclide_in_database: boolean;
     /** Half-life in seconds when radioactive; omitted when stable. */
     nuclide_half_life_s?: number | null;
     detail?: StepDetail;

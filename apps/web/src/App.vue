@@ -250,8 +250,9 @@ onMounted(async () => {
         <!-- Current step detail -->
         <div class="section" v-if="simState">
           <h2>Current Step</h2>
-          <div class="detail-card">
+          <div class="detail-card" :class="{ unknown: !simState.current_step.nuclide_in_database }">
             <div class="detail-nuclide">{{ simState.current_step.nuclide.notation }}</div>
+            <div v-if="!simState.current_step.nuclide_in_database" class="detail-unknown">?? No data available for this nuclide</div>
             <div class="detail-desc">{{ simState.current_step.description }}</div>
             <dl class="detail-props">
               <dt>Type</dt>
@@ -539,6 +540,18 @@ onMounted(async () => {
 }
 .detail-props dd {
   margin: 0;
+}
+
+/* -- Unknown nuclide indicator -- */
+.detail-card.unknown {
+  border-color: #d29922;
+  border-style: dashed;
+}
+.detail-unknown {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #d29922;
+  margin-bottom: 0.4rem;
 }
 
 .error {
