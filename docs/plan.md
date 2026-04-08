@@ -54,7 +54,7 @@ speed, migrate to Path B (direct parsing) as needed.
      the dataset (or flagged as needing addition)
    - Generate a Rust source file or JSON blob for embedding in the binary
 
-**Path B -- Direct database access (future)**
+**Path B -- Direct database access**
 
 5. **IAEA LiveChart API**
    - Use the LiveChart Data Download API to pull CSV data directly
