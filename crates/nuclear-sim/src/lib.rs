@@ -9,7 +9,7 @@ mod sim;
 
 pub use data::{
     build_extracted_database, build_stub_database, DecayBranch, DecayMode, FissionProduct,
-    NuclideData, NuclideDatabase, Stability,
+    NuclideData, NuclideDatabase, Stability, ThermalCrossSections,
 };
 pub use elements::symbol as element_symbol;
 pub use nuclide::{Nuclide, NuclideError};
