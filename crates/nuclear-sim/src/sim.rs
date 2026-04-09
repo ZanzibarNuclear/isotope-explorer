@@ -180,7 +180,10 @@ impl Simulation {
         let target_data = self.db.get(&target);
 
         if let Some(data) = target_data {
-            if data.fissile && energy == NeutronEnergy::Slow && !data.fission_products.is_empty() {
+            if data.is_fissile()
+                && energy == NeutronEnergy::Slow
+                && !data.fission_products.is_empty()
+            {
                 let product = &data.fission_products[0];
                 self.resolve_fission(target, energy, product.clone());
                 return Ok(());

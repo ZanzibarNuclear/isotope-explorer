@@ -261,7 +261,7 @@ fn lookup_nuclide_data(sim: &CoreSim, z: u16, n: u16) -> Option<NuclideDataJs> {
     Some(NuclideDataJs {
         notation: nuclide.notation(),
         is_stable: data.stability == Stability::Stable,
-        is_fissile: data.fissile,
+        is_fissile: data.is_fissile(),
         half_life_s: data.half_life_s,
         decay_modes: data
             .decay_modes
