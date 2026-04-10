@@ -2,6 +2,15 @@
 import { onMounted, ref, computed } from "vue";
 import type { SimState, StepInfo } from "@wasm/nuclear_sim_wasm.js";
 import PeriodicTablePicker from "./components/PeriodicTablePicker.vue";
+import QuickPickList from "./components/QuickPickList.vue";
+import ChainView from "./components/ChainView.vue";
+import CardChainView from "./components/CardChainView.vue";
+
+type PickerView = "table" | "quick";
+const pickerView = ref<PickerView>("quick");
+
+type ChainViewMode = "list" | "cards";
+const chainViewMode = ref<ChainViewMode>("cards");
 
 const wasmVersion = ref("...");
 const wasmError = ref<string | null>(null);
@@ -92,14 +101,17 @@ function switchBranch(fragment: "light" | "heavy") {
   }
 }
 
-function eventIcon(type: string): string {
-  switch (type) {
-    case "start": return "&#9679;";
-    case "neutron-absorbed": return "&#10141;";
-    case "fission": return "&#10038;";
-    case "decay": return "&#8595;";
-    case "stable": return "&#9632;";
-    default: return "?";
+function onGoToBranchStep(leg: "light" | "heavy", fissionIndex: number, offset: number) {
+  if (!session.value) return;
+  try {
+    const wantHeavy = leg === "heavy";
+    if (simState.value && simState.value.following_heavy !== wantHeavy) {
+      session.value.switch_branch(leg);
+    }
+    session.value.go_to_step(fissionIndex + 1 + offset);
+    refreshState();
+  } catch (e) {
+    wasmError.value = e instanceof Error ? e.message : String(e);
   }
 }
 
@@ -122,34 +134,61 @@ onMounted(async () => {
       <p class="subtitle">Fire neutrons at nuclei and see what happens</p>
     </header>
 
-    <!-- Periodic table picker (full width) -->
+    <!-- Isotope picker (full width) -->
     <section v-if="session" class="picker-area">
-      <PeriodicTablePicker :session="session" @select-isotope="onSelectIsotope" />
+      <div class="picker-toggle">
+        <button
+          class="toggle-btn"
+          :class="{ active: pickerView === 'table' }"
+          @click="pickerView = 'table'"
+        >
+          Periodic Table
+        </button>
+        <button
+          class="toggle-btn"
+          :class="{ active: pickerView === 'quick' }"
+          @click="pickerView = 'quick'"
+        >
+          Quick Pick
+        </button>
+      </div>
+      <PeriodicTablePicker
+        v-if="pickerView === 'table'"
+        :session="session"
+        @select-isotope="onSelectIsotope"
+      />
+      <QuickPickList
+        v-else
+        :session="session"
+        @select-isotope="onSelectIsotope"
+      />
     </section>
 
     <main class="main">
       <!-- Left: chain visualization -->
       <section class="viewport" aria-label="Reaction chain">
+        <div class="chain-view-toggle" v-if="simState">
+          <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'list' }" @click="chainViewMode = 'list'">List</button>
+          <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'cards' }" @click="chainViewMode = 'cards'">Cards</button>
+        </div>
         <div v-if="!simState" class="viewport-placeholder">
           Choose an isotope to begin.
         </div>
-        <div v-else class="chain">
-          <div
-            v-for="step in allSteps"
-            :key="step.index"
-            class="chain-step"
-            :class="{
-              active: step.index === simState.cursor,
-              fission: step.event_type === 'fission',
-              stable: step.event_type === 'stable',
-            }"
-            @click="goToStep(step.index)"
-          >
-            <span class="chain-icon" v-html="eventIcon(step.event_type)"></span>
-            <span class="chain-label">{{ step.nuclide.notation }}</span>
-            <span class="chain-type">{{ step.event_type }}</span>
-          </div>
-        </div>
+        <ChainView
+          v-else-if="chainViewMode === 'list'"
+          :steps="allSteps"
+          :cursor="simState.cursor"
+          @go-to-step="goToStep"
+        />
+        <CardChainView
+          v-else
+          :session="session"
+          :steps="allSteps"
+          :cursor="simState.cursor"
+          :following-heavy="simState.following_heavy"
+          @go-to-step="goToStep"
+          @go-to-branch-step="onGoToBranchStep"
+        />
       </section>
 
       <!-- Right: controls and details -->
@@ -211,8 +250,9 @@ onMounted(async () => {
         <!-- Current step detail -->
         <div class="section" v-if="simState">
           <h2>Current Step</h2>
-          <div class="detail-card">
+          <div class="detail-card" :class="{ unknown: !simState.current_step.nuclide_in_database }">
             <div class="detail-nuclide">{{ simState.current_step.nuclide.notation }}</div>
+            <div v-if="!simState.current_step.nuclide_in_database" class="detail-unknown">?? No data available for this nuclide</div>
             <div class="detail-desc">{{ simState.current_step.description }}</div>
             <dl class="detail-props">
               <dt>Type</dt>
@@ -294,47 +334,30 @@ onMounted(async () => {
   font-size: 0.95rem;
 }
 
-.chain {
+/* -- Chain view toggle -- */
+.chain-view-toggle {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  padding: 0.5rem 0.75rem 0;
 }
-.chain-step {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+.chain-toggle-btn {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  background: transparent;
+  color: #6e7681;
+  font-size: 0.75rem;
   cursor: pointer;
-  transition: background 0.15s;
-  font-size: 0.9rem;
+  transition: color 0.12s, border-color 0.12s;
 }
-.chain-step:hover {
-  background: #1c2128;
+.chain-toggle-btn:hover {
+  color: #e6edf3;
+  border-color: #484f58;
 }
-.chain-step.active {
-  background: #1f6feb33;
-  outline: 1px solid #1f6feb;
-}
-.chain-step.fission {
-  border-left: 3px solid #f0883e;
-}
-.chain-step.stable {
-  border-left: 3px solid #3fb950;
-}
-.chain-icon {
-  font-size: 0.85rem;
-  width: 1.2rem;
-  text-align: center;
-  color: #8b949e;
-}
-.chain-label {
-  font-weight: 600;
-  min-width: 4.5rem;
-}
-.chain-type {
-  color: #8b949e;
-  font-size: 0.8rem;
+.chain-toggle-btn.active {
+  color: #e6edf3;
+  border-color: #58a6ff;
+  background: #1f6feb18;
 }
 
 /* -- Panel -- */
@@ -363,6 +386,34 @@ onMounted(async () => {
 /* -- Picker area -- */
 .picker-area {
   border-bottom: 1px solid #30363d;
+}
+
+.picker-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 0.5rem 1.25rem 0;
+  background: #0d1117;
+}
+.toggle-btn {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid #30363d;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: #161b22;
+  color: #8b949e;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.toggle-btn:hover {
+  background: #21262d;
+  color: #e6edf3;
+}
+.toggle-btn.active {
+  background: #21262d;
+  color: #e6edf3;
+  border-color: #30363d;
 }
 
 /* -- Action buttons -- */
@@ -489,6 +540,18 @@ onMounted(async () => {
 }
 .detail-props dd {
   margin: 0;
+}
+
+/* -- Unknown nuclide indicator -- */
+.detail-card.unknown {
+  border-color: #d29922;
+  border-style: dashed;
+}
+.detail-unknown {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #d29922;
+  margin-bottom: 0.4rem;
 }
 
 .error {
