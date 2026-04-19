@@ -154,12 +154,13 @@ onMounted(async () => {
 
       <!-- Expanded: full picker UI -->
       <template v-else>
+        <h2 class="picker-heading">Choose an Isotope</h2>
         <div class="picker-toggle">
-          <button class="toggle-btn" :class="{ active: pickerView === 'table' }" @click="pickerView = 'table'">
-            Periodic Table
-          </button>
           <button class="toggle-btn" :class="{ active: pickerView === 'quick' }" @click="pickerView = 'quick'">
             Quick Pick
+          </button>
+          <button class="toggle-btn" :class="{ active: pickerView === 'table' }" @click="pickerView = 'table'">
+            Periodic Table
           </button>
         </div>
         <PeriodicTablePicker v-if="pickerView === 'table'" :session="session" @select-isotope="onSelectIsotope" />
@@ -171,10 +172,9 @@ onMounted(async () => {
       <!-- Left: chain visualization -->
       <section class="viewport" aria-label="Reaction chain">
         <div class="chain-view-toggle" v-if="simState">
-          <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'list' }"
-            @click="chainViewMode = 'list'">List</button>
-          <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'cards' }"
-            @click="chainViewMode = 'cards'">Cards</button>
+          <button class="chain-toggle-btn" @click="chainViewMode = chainViewMode === 'cards' ? 'list' : 'cards'">
+            {{ chainViewMode === 'cards' ? 'View as a list' : 'View as cards' }}
+          </button>
         </div>
         <div v-if="!simState" class="viewport-placeholder">
           Choose an isotope to begin.
@@ -330,6 +330,7 @@ onMounted(async () => {
 /* -- Chain view toggle -- */
 .chain-view-toggle {
   display: flex;
+  justify-content: flex-end;
   gap: 4px;
   padding: 0.5rem 0.75rem 0;
 }
@@ -427,6 +428,15 @@ onMounted(async () => {
 .picker-clear-btn:hover {
   color: #e6edf3;
   border-color: #58a6ff;
+}
+
+.picker-heading {
+  margin: 0;
+  padding: 0.6rem 1.25rem 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e6edf3;
+  background: #0d1117;
 }
 
 .picker-toggle {
