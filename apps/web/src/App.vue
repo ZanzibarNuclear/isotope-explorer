@@ -8,6 +8,7 @@ import CardChainView from "./components/CardChainView.vue";
 
 type PickerView = "table" | "quick";
 const pickerView = ref<PickerView>("quick");
+const pickerOpen = ref(true);
 
 type ChainViewMode = "list" | "cards";
 const chainViewMode = ref<ChainViewMode>("cards");
@@ -36,9 +37,16 @@ function onSelectIsotope(z: number, n: number) {
   try {
     session.value.set_isotope(z, n);
     refreshState();
+    pickerOpen.value = false;
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
   }
+}
+
+function clearIsotope() {
+  simState.value = null;
+  allSteps.value = [];
+  pickerOpen.value = true;
 }
 
 function induceDecay() {
@@ -136,59 +144,45 @@ onMounted(async () => {
 
     <!-- Isotope picker (full width) -->
     <section v-if="session" class="picker-area">
-      <div class="picker-toggle">
-        <button
-          class="toggle-btn"
-          :class="{ active: pickerView === 'table' }"
-          @click="pickerView = 'table'"
-        >
-          Periodic Table
-        </button>
-        <button
-          class="toggle-btn"
-          :class="{ active: pickerView === 'quick' }"
-          @click="pickerView = 'quick'"
-        >
-          Quick Pick
-        </button>
+      <!-- Collapsed: show selected isotope + change button -->
+      <div v-if="!pickerOpen && simState" class="picker-summary">
+        <span class="picker-summary-label">Selected Isotope</span>
+        <span class="picker-summary-sep">·</span>
+        <span class="picker-summary-value">{{ simState.current_step.nuclide.notation }}</span>
+        <button class="picker-clear-btn" @click="clearIsotope">Change</button>
       </div>
-      <PeriodicTablePicker
-        v-if="pickerView === 'table'"
-        :session="session"
-        @select-isotope="onSelectIsotope"
-      />
-      <QuickPickList
-        v-else
-        :session="session"
-        @select-isotope="onSelectIsotope"
-      />
+
+      <!-- Expanded: full picker UI -->
+      <template v-else>
+        <div class="picker-toggle">
+          <button class="toggle-btn" :class="{ active: pickerView === 'table' }" @click="pickerView = 'table'">
+            Periodic Table
+          </button>
+          <button class="toggle-btn" :class="{ active: pickerView === 'quick' }" @click="pickerView = 'quick'">
+            Quick Pick
+          </button>
+        </div>
+        <PeriodicTablePicker v-if="pickerView === 'table'" :session="session" @select-isotope="onSelectIsotope" />
+        <QuickPickList v-else :session="session" @select-isotope="onSelectIsotope" />
+      </template>
     </section>
 
     <main class="main">
       <!-- Left: chain visualization -->
       <section class="viewport" aria-label="Reaction chain">
         <div class="chain-view-toggle" v-if="simState">
-          <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'list' }" @click="chainViewMode = 'list'">List</button>
-          <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'cards' }" @click="chainViewMode = 'cards'">Cards</button>
+          <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'list' }"
+            @click="chainViewMode = 'list'">List</button>
+          <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'cards' }"
+            @click="chainViewMode = 'cards'">Cards</button>
         </div>
         <div v-if="!simState" class="viewport-placeholder">
           Choose an isotope to begin.
         </div>
-        <ChainView
-          v-else-if="chainViewMode === 'list'"
-          :steps="allSteps"
-          :cursor="simState.cursor"
-          @go-to-step="goToStep"
-        />
-        <CardChainView
-          v-else
-          :session="session"
-          :steps="allSteps"
-          :cursor="simState.cursor"
-          :following-heavy="simState.following_heavy"
-          @go-to-step="goToStep"
-          @go-to-branch-step="onGoToBranchStep"
-        />
+        <ChainView v-else-if="chainViewMode === 'list'" :steps="allSteps" :cursor="simState.cursor"
+          @go-to-step="goToStep" />
+        <CardChainView v-else :session="session" :steps="allSteps" :cursor="simState.cursor"
+          :following-heavy="simState.following_heavy" @go-to-step="goToStep" @go-to-branch-step="onGoToBranchStep" />
       </section>
 
       <!-- Right: controls and details -->
@@ -230,18 +224,10 @@ onMounted(async () => {
         <div class="section" v-if="simState?.has_fission_branch">
           <h2>Fission Fragment</h2>
           <div class="branch-btns">
-            <button
-              class="branch-btn"
-              :class="{ selected: !simState.following_heavy }"
-              @click="switchBranch('light')"
-            >
+            <button class="branch-btn" :class="{ selected: !simState.following_heavy }" @click="switchBranch('light')">
               Light fragment
             </button>
-            <button
-              class="branch-btn"
-              :class="{ selected: simState.following_heavy }"
-              @click="switchBranch('heavy')"
-            >
+            <button class="branch-btn" :class="{ selected: simState.following_heavy }" @click="switchBranch('heavy')">
               Heavy fragment
             </button>
           </div>
@@ -252,7 +238,8 @@ onMounted(async () => {
           <h2>Current Step</h2>
           <div class="detail-card" :class="{ unknown: !simState.current_step.nuclide_in_database }">
             <div class="detail-nuclide">{{ simState.current_step.nuclide.notation }}</div>
-            <div v-if="!simState.current_step.nuclide_in_database" class="detail-unknown">?? No data available for this nuclide</div>
+            <div v-if="!simState.current_step.nuclide_in_database" class="detail-unknown">?? No data available for this
+              nuclide</div>
             <div class="detail-desc">{{ simState.current_step.description }}</div>
             <dl class="detail-props">
               <dt>Type</dt>
@@ -295,11 +282,13 @@ onMounted(async () => {
   padding: 1rem 1.25rem;
   border-bottom: 1px solid #30363d;
 }
+
 .header h1 {
   margin: 0;
   font-size: 1.35rem;
   font-weight: 600;
 }
+
 .subtitle {
   margin: 0.35rem 0 0;
   font-size: 0.875rem;
@@ -313,8 +302,11 @@ onMounted(async () => {
   gap: 0;
   min-height: 0;
 }
+
 @media (max-width: 720px) {
-  .main { grid-template-columns: 1fr; }
+  .main {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* -- Viewport / chain -- */
@@ -322,6 +314,7 @@ onMounted(async () => {
   padding: 1.5rem;
   overflow-y: auto;
 }
+
 .viewport-placeholder {
   height: 100%;
   min-height: 240px;
@@ -340,6 +333,7 @@ onMounted(async () => {
   gap: 4px;
   padding: 0.5rem 0.75rem 0;
 }
+
 .chain-toggle-btn {
   padding: 0.2rem 0.6rem;
   border: 1px solid #30363d;
@@ -350,10 +344,12 @@ onMounted(async () => {
   cursor: pointer;
   transition: color 0.12s, border-color 0.12s;
 }
+
 .chain-toggle-btn:hover {
   color: #e6edf3;
   border-color: #484f58;
 }
+
 .chain-toggle-btn.active {
   color: #e6edf3;
   border-color: #58a6ff;
@@ -367,13 +363,18 @@ onMounted(async () => {
   background: #161b22;
   overflow-y: auto;
 }
+
 @media (max-width: 720px) {
-  .panel { border-left: none; border-top: 1px solid #30363d; }
+  .panel {
+    border-left: none;
+    border-top: 1px solid #30363d;
+  }
 }
 
 .section {
   margin-bottom: 1.25rem;
 }
+
 .section h2 {
   margin: 0 0 0.5rem;
   font-size: 0.85rem;
@@ -388,12 +389,53 @@ onMounted(async () => {
   border-bottom: 1px solid #30363d;
 }
 
+.picker-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1.25rem;
+  background: #0d1117;
+  font-size: 0.875rem;
+}
+
+.picker-summary-label {
+  color: #8b949e;
+  font-weight: 500;
+}
+
+.picker-summary-sep {
+  color: #484f58;
+}
+
+.picker-summary-value {
+  font-weight: 700;
+  color: #e6edf3;
+  font-size: 1rem;
+}
+
+.picker-clear-btn {
+  padding: 0.25rem 0.7rem;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #21262d;
+  color: #8b949e;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.picker-clear-btn:hover {
+  color: #e6edf3;
+  border-color: #58a6ff;
+}
+
 .picker-toggle {
   display: flex;
   gap: 2px;
   padding: 0.5rem 1.25rem 0;
   background: #0d1117;
 }
+
 .toggle-btn {
   padding: 0.3rem 0.75rem;
   border: 1px solid #30363d;
@@ -406,10 +448,12 @@ onMounted(async () => {
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
+
 .toggle-btn:hover {
   background: #21262d;
   color: #e6edf3;
 }
+
 .toggle-btn.active {
   background: #21262d;
   color: #e6edf3;
@@ -422,6 +466,7 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
 .fire-btn {
   flex: 1;
   min-width: 7rem;
@@ -433,28 +478,35 @@ onMounted(async () => {
   cursor: pointer;
   transition: opacity 0.15s;
 }
+
 .fire-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
+
 .fire-btn.slow {
   background: #1f6feb;
   color: #fff;
 }
+
 .fire-btn.slow:not(:disabled):hover {
   background: #388bfd;
 }
+
 .fire-btn.fast {
   background: #f0883e;
   color: #fff;
 }
+
 .fire-btn.fast:not(:disabled):hover {
   background: #f39c55;
 }
+
 .fire-btn.decay {
   background: #8957e5;
   color: #fff;
 }
+
 .fire-btn.decay:not(:disabled):hover {
   background: #a371f7;
 }
@@ -465,6 +517,7 @@ onMounted(async () => {
   align-items: center;
   gap: 0.5rem;
 }
+
 .nav-btn {
   padding: 0.35rem 0.7rem;
   border: 1px solid #30363d;
@@ -474,13 +527,16 @@ onMounted(async () => {
   font-size: 0.85rem;
   cursor: pointer;
 }
+
 .nav-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
+
 .nav-btn:not(:disabled):hover {
   border-color: #58a6ff;
 }
+
 .step-counter {
   flex: 1;
   text-align: center;
@@ -493,6 +549,7 @@ onMounted(async () => {
   display: flex;
   gap: 0.5rem;
 }
+
 .branch-btn {
   flex: 1;
   padding: 0.4rem;
@@ -503,10 +560,12 @@ onMounted(async () => {
   font-size: 0.85rem;
   cursor: pointer;
 }
+
 .branch-btn.selected {
   border-color: #58a6ff;
   background: #1f6feb33;
 }
+
 .branch-btn:hover {
   border-color: #58a6ff;
 }
@@ -518,16 +577,19 @@ onMounted(async () => {
   border-radius: 8px;
   padding: 0.75rem;
 }
+
 .detail-nuclide {
   font-size: 1.4rem;
   font-weight: 700;
   margin-bottom: 0.25rem;
 }
+
 .detail-desc {
   font-size: 0.85rem;
   color: #8b949e;
   margin-bottom: 0.6rem;
 }
+
 .detail-props {
   margin: 0;
   display: grid;
@@ -535,9 +597,11 @@ onMounted(async () => {
   gap: 0.25rem 0.75rem;
   font-size: 0.825rem;
 }
+
 .detail-props dt {
   color: #8b949e;
 }
+
 .detail-props dd {
   margin: 0;
 }
@@ -547,6 +611,7 @@ onMounted(async () => {
   border-color: #d29922;
   border-style: dashed;
 }
+
 .detail-unknown {
   font-size: 0.85rem;
   font-weight: 600;
@@ -559,6 +624,7 @@ onMounted(async () => {
   font-size: 0.875rem;
   margin: 0 0 1rem;
 }
+
 .version {
   margin: 1.5rem 0 0;
   font-size: 0.75rem;
