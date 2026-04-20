@@ -8,11 +8,13 @@ const props = defineProps<{
   followingHeavy?: boolean;
   session: unknown;
   stepByStep?: boolean;
+  fissionTails?: { following_light: boolean; light: StepInfo[]; heavy: StepInfo[] };
 }>();
 
 const emit = defineEmits<{
   (e: "go-to-step", index: number): void;
   (e: "go-to-branch-step", leg: "light" | "heavy", fissionIndex: number, offset: number): void;
+  (e: "switch-fragment", leg: "light" | "heavy"): void;
 }>();
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -176,8 +178,14 @@ watch(
 
 const fh = computed(() => props.followingHeavy ?? true);
 
-const lightLegSteps = computed(() => (fh.value ? lightPreview.value : followedTail.value));
-const heavyLegSteps = computed(() => (fh.value ? followedTail.value : heavyPreview.value));
+const lightLegSteps = computed(() => {
+  if (props.fissionTails) return props.fissionTails.light;
+  return fh.value ? lightPreview.value : followedTail.value;
+});
+const heavyLegSteps = computed(() => {
+  if (props.fissionTails) return props.fissionTails.heavy;
+  return fh.value ? followedTail.value : heavyPreview.value;
+});
 
 const renderBlocks = computed((): RenderBlock[] => {
   const fi = fissionIndex.value;
@@ -216,8 +224,20 @@ function onSegmentCardClick(step: StepInfo) {
 function onLegCardClick(leg: "light" | "heavy", step: StepInfo) {
   const fi = fissionIndex.value;
   if (fi < 0) return;
-  const preview =
-    (leg === "light" && fh.value) || (leg === "heavy" && !fh.value);
+
+  if (props.stepByStep) {
+    // Active column: navigate within the chain. Non-active: switch focus.
+    const activeIsLight = !fh.value;
+    const clickedIsLight = leg === "light";
+    if (clickedIsLight === activeIsLight) {
+      emit("go-to-step", step.index);
+    } else {
+      emit("switch-fragment", leg);
+    }
+    return;
+  }
+
+  const preview = (leg === "light" && fh.value) || (leg === "heavy" && !fh.value);
   if (preview) {
     emit("go-to-branch-step", leg, fi, step.index);
   } else {
@@ -225,7 +245,11 @@ function onLegCardClick(leg: "light" | "heavy", step: StepInfo) {
   }
 }
 
-function onFissionFragClick(stepIndex: number) {
+function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
+  if (props.stepByStep && leg) {
+    emit("switch-fragment", leg);
+    return;
+  }
   emit("go-to-step", stepIndex);
 }
 </script>
@@ -274,7 +298,7 @@ function onFissionFragClick(stepIndex: number) {
                   unfollowed: item.followedIsHeavy,
                   active: item.isActive && !item.followedIsHeavy,
                 }"
-                @click="onFissionFragClick(item.step.index)"
+                @click="onFissionFragClick(item.step.index, 'light')"
               >
                 <div class="frag-tag">light</div>
                 <div class="card-notation">{{ item.step.detail?.light_fragment?.notation }}</div>
@@ -286,7 +310,7 @@ function onFissionFragClick(stepIndex: number) {
                   unfollowed: !item.followedIsHeavy,
                   active: item.isActive && item.followedIsHeavy,
                 }"
-                @click="onFissionFragClick(item.step.index)"
+                @click="onFissionFragClick(item.step.index, 'heavy')"
               >
                 <div class="frag-tag">heavy</div>
                 <div class="card-notation">{{ item.step.detail?.heavy_fragment?.notation }}</div>
@@ -317,7 +341,7 @@ function onFissionFragClick(stepIndex: number) {
               unfollowed: block.followedIsHeavy,
               active: block.isActive && !block.followedIsHeavy,
             }"
-            @click="onFissionFragClick(block.step.index)"
+            @click="onFissionFragClick(block.step.index, 'light')"
           >
             <div class="frag-tag">light</div>
             <div class="card-notation">{{ block.step.detail?.light_fragment?.notation }}</div>
@@ -329,7 +353,7 @@ function onFissionFragClick(stepIndex: number) {
               unfollowed: !block.followedIsHeavy,
               active: block.isActive && block.followedIsHeavy,
             }"
-            @click="onFissionFragClick(block.step.index)"
+            @click="onFissionFragClick(block.step.index, 'heavy')"
           >
             <div class="frag-tag">heavy</div>
             <div class="card-notation">{{ block.step.detail?.heavy_fragment?.notation }}</div>

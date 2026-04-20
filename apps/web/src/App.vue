@@ -22,6 +22,13 @@ const simState = ref<SimState | null>(null);
 const allSteps = ref<StepInfo[]>([]);
 const startingIsotope = ref<string | null>(null);
 
+interface FissionTails {
+  following_light: boolean;
+  light: StepInfo[];
+  heavy: StepInfo[];
+}
+const fissionTails = ref<FissionTails | null>(null);
+
 const canStepBack = computed(() => simState.value && simState.value.cursor > 0);
 const canStepForward = computed(
   () => simState.value && simState.value.cursor < simState.value.step_count - 1
@@ -33,6 +40,11 @@ function refreshState() {
   if (!session.value) return;
   simState.value = session.value.state();
   allSteps.value = session.value.all_steps();
+  if (stepByStep.value && simState.value?.has_fission_branch) {
+    fissionTails.value = session.value.fission_tails() ?? null;
+  } else {
+    fissionTails.value = null;
+  }
 }
 
 function onSelectIsotope(z: number, n: number) {
@@ -51,6 +63,7 @@ function clearIsotope() {
   simState.value = null;
   allSteps.value = [];
   startingIsotope.value = null;
+  fissionTails.value = null;
   pickerOpen.value = true;
 }
 
@@ -124,6 +137,10 @@ function switchBranch(fragment: "light" | "heavy") {
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
   }
+}
+
+function onSwitchFragment(leg: "light" | "heavy") {
+  switchBranch(leg);
 }
 
 function onGoToBranchStep(leg: "light" | "heavy", fissionIndex: number, offset: number) {
@@ -200,7 +217,9 @@ onMounted(async () => {
           @go-to-step="goToStep" />
         <CardChainView v-else :session="session" :steps="allSteps" :cursor="simState.cursor"
           :following-heavy="simState.following_heavy" :step-by-step="stepByStep"
-          @go-to-step="goToStep" @go-to-branch-step="onGoToBranchStep" />
+          :fission-tails="fissionTails"
+          @go-to-step="goToStep" @go-to-branch-step="onGoToBranchStep"
+          @switch-fragment="onSwitchFragment" />
       </section>
 
       <!-- Right: controls and details -->

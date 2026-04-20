@@ -86,6 +86,12 @@ pub struct FissionBranch {
     heavy_tail: Vec<SimEvent>,
 }
 
+impl FissionBranch {
+    pub fn following_light(&self) -> bool { self.following_light }
+    pub fn light_tail(&self) -> &[SimEvent] { &self.light_tail }
+    pub fn heavy_tail(&self) -> &[SimEvent] { &self.heavy_tail }
+}
+
 /// A simulation session. Tracks the full event history and navigation state.
 pub struct Simulation {
     db: NuclideDatabase,
@@ -538,11 +544,19 @@ impl Simulation {
     }
 
     /// The nuclide at the current cursor position.
+    ///
+    /// Special case: when the cursor is sitting on a fission event, `resulting_nuclide()`
+    /// always returns the heavy fragment.  We override that here so the result reflects
+    /// whichever fragment is actually being followed.
     pub fn current_nuclide(&self) -> Nuclide {
-        self.steps
-            .get(self.cursor)
-            .map(|e| e.resulting_nuclide())
-            .expect("simulation should have at least a Start event")
+        let event = self.steps.get(self.cursor).expect("simulation should have at least a Start event");
+        if let SimEvent::Fission { light, heavy, .. } = event {
+            if let Some(branch) = self.fission_branches.iter().find(|b| b.fission_step == self.cursor) {
+                return if branch.following_light { *light } else { *heavy };
+            }
+            return *heavy; // fallback (no branch recorded)
+        }
+        event.resulting_nuclide()
     }
 
     /// Current step index.

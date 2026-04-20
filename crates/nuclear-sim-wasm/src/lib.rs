@@ -284,6 +284,15 @@ pub struct SimStateJs {
 }
 
 #[derive(Serialize)]
+pub struct FissionTailsJs {
+    pub following_light: bool,
+    /// Steps revealed so far in the light fragment chain.
+    pub light: Vec<StepJs>,
+    /// Steps revealed so far in the heavy fragment chain.
+    pub heavy: Vec<StepJs>,
+}
+
+#[derive(Serialize)]
 pub struct NuclideKeyJs {
     pub z: u16,
     pub n: u16,
@@ -452,6 +461,44 @@ impl SimSession {
     /// Get all steps as an array (for the chain summary).
     pub fn all_steps(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&all_steps_vec(&self.sim)).unwrap()
+    }
+
+    /// Return both fragment chains for the first fission branch.
+    ///
+    /// Step indices are set to fission_step+1+offset so they match what Rust's cursor
+    /// would report when that chain is the active one — enabling correct card highlighting.
+    /// Returns null if there is no fission branch.
+    pub fn fission_tails(&self) -> JsValue {
+        let branches = self.sim.fission_branches();
+        let branch = match branches.first() {
+            Some(b) => b,
+            None => return JsValue::NULL,
+        };
+        let fi = branch.fission_step;
+        let base = fi + 1;
+
+        let make_steps = |events: &[SimEvent]| -> Vec<StepJs> {
+            events
+                .iter()
+                .enumerate()
+                .map(|(i, e)| event_to_step(base + i, e, &self.sim))
+                .collect()
+        };
+
+        let active_tail = &self.sim.steps()[fi + 1..];
+
+        let (light, heavy) = if branch.following_light() {
+            (make_steps(active_tail), make_steps(branch.heavy_tail()))
+        } else {
+            (make_steps(branch.light_tail()), make_steps(active_tail))
+        };
+
+        serde_wasm_bindgen::to_value(&FissionTailsJs {
+            following_light: branch.following_light(),
+            light,
+            heavy,
+        })
+        .unwrap()
     }
 
     /// Auto-follow decay chain from a nuclide (same rules as after fission), for parallel UI legs.
