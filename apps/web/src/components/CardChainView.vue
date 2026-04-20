@@ -294,18 +294,6 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
               <div
                 class="frag-card"
                 :class="{
-                  followed: !item.followedIsHeavy,
-                  unfollowed: item.followedIsHeavy,
-                  active: item.isActive && !item.followedIsHeavy,
-                }"
-                @click="onFissionFragClick(item.step.index, 'light')"
-              >
-                <div class="frag-tag">light</div>
-                <div class="card-notation">{{ item.step.detail?.light_fragment?.notation }}</div>
-              </div>
-              <div
-                class="frag-card"
-                :class="{
                   followed: item.followedIsHeavy,
                   unfollowed: !item.followedIsHeavy,
                   active: item.isActive && item.followedIsHeavy,
@@ -314,6 +302,18 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
               >
                 <div class="frag-tag">heavy</div>
                 <div class="card-notation">{{ item.step.detail?.heavy_fragment?.notation }}</div>
+              </div>
+              <div
+                class="frag-card"
+                :class="{
+                  followed: !item.followedIsHeavy,
+                  unfollowed: item.followedIsHeavy,
+                  active: item.isActive && !item.followedIsHeavy,
+                }"
+                @click="onFissionFragClick(item.step.index, 'light')"
+              >
+                <div class="frag-tag">light</div>
+                <div class="card-notation">{{ item.step.detail?.light_fragment?.notation }}</div>
               </div>
             </div>
             <div class="frag-continuation" :class="{ 'is-heavy': item.followedIsHeavy }">
@@ -337,18 +337,6 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
           <div
             class="frag-card"
             :class="{
-              followed: !block.followedIsHeavy,
-              unfollowed: block.followedIsHeavy,
-              active: block.isActive && !block.followedIsHeavy,
-            }"
-            @click="onFissionFragClick(block.step.index, 'light')"
-          >
-            <div class="frag-tag">light</div>
-            <div class="card-notation">{{ block.step.detail?.light_fragment?.notation }}</div>
-          </div>
-          <div
-            class="frag-card"
-            :class="{
               followed: block.followedIsHeavy,
               unfollowed: !block.followedIsHeavy,
               active: block.isActive && block.followedIsHeavy,
@@ -358,15 +346,25 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
             <div class="frag-tag">heavy</div>
             <div class="card-notation">{{ block.step.detail?.heavy_fragment?.notation }}</div>
           </div>
+          <div
+            class="frag-card"
+            :class="{
+              followed: !block.followedIsHeavy,
+              unfollowed: block.followedIsHeavy,
+              active: block.isActive && !block.followedIsHeavy,
+            }"
+            @click="onFissionFragClick(block.step.index, 'light')"
+          >
+            <div class="frag-tag">light</div>
+            <div class="card-notation">{{ block.step.detail?.light_fragment?.notation }}</div>
+          </div>
         </div>
       </div>
 
       <!-- Two decay columns after fission -->
       <div v-else-if="block.kind === 'parallel'" class="parallel-columns">
-        <div class="parallel-column" :class="{ dimmed: fh }">
-          <div class="column-label">Light</div>
-          <div class="column-stem"></div>
-          <template v-for="(item, idx) in block.lightItems" :key="'L-' + idx">
+        <div class="parallel-column" :class="{ dimmed: !fh }">
+          <template v-for="(item, idx) in block.heavyItems" :key="'H-' + idx">
             <div
               v-if="item.kind === 'card'"
               class="iso-card"
@@ -374,7 +372,7 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
                 active: item.isActive,
                 stable: item.step.nuclide_is_stable,
               }"
-              @click="onLegCardClick('light', item.step)"
+              @click="onLegCardClick('heavy', item.step)"
             >
               <div class="card-notation">{{ item.step.nuclide.notation }}</div>
               <div class="card-hl">{{ halfLifeDisplay(item.step) }}</div>
@@ -387,10 +385,8 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
           </template>
         </div>
 
-        <div class="parallel-column" :class="{ dimmed: !fh }">
-          <div class="column-label">Heavy</div>
-          <div class="column-stem"></div>
-          <template v-for="(item, idx) in block.heavyItems" :key="'H-' + idx">
+        <div class="parallel-column" :class="{ dimmed: fh }">
+          <template v-for="(item, idx) in block.lightItems" :key="'L-' + idx">
             <div
               v-if="item.kind === 'card'"
               class="iso-card"
@@ -398,7 +394,7 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
                 active: item.isActive,
                 stable: item.step.nuclide_is_stable,
               }"
-              @click="onLegCardClick('heavy', item.step)"
+              @click="onLegCardClick('light', item.step)"
             >
               <div class="card-notation">{{ item.step.nuclide.notation }}</div>
               <div class="card-hl">{{ halfLifeDisplay(item.step) }}</div>

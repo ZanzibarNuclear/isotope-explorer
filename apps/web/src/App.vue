@@ -205,10 +205,13 @@ onMounted(async () => {
     <main class="main">
       <!-- Left: chain visualization -->
       <section class="viewport" aria-label="Reaction chain">
-        <div class="chain-view-toggle" v-if="simState">
-          <button class="chain-toggle-btn" @click="chainViewMode = chainViewMode === 'cards' ? 'list' : 'cards'">
-            {{ chainViewMode === 'cards' ? 'View as a list' : 'View as cards' }}
-          </button>
+        <div class="viewport-header">
+          <h2 class="panel-title">Action Viewer</h2>
+          <div class="chain-view-toggle" v-if="simState">
+            <button class="chain-toggle-btn" @click="chainViewMode = chainViewMode === 'cards' ? 'list' : 'cards'">
+              {{ chainViewMode === 'cards' ? 'View as a list' : 'View as cards' }}
+            </button>
+          </div>
         </div>
         <div v-if="!simState" class="viewport-placeholder">
           Choose an isotope to begin.
@@ -216,14 +219,13 @@ onMounted(async () => {
         <ChainView v-else-if="chainViewMode === 'list'" :steps="allSteps" :cursor="simState.cursor"
           @go-to-step="goToStep" />
         <CardChainView v-else :session="session" :steps="allSteps" :cursor="simState.cursor"
-          :following-heavy="simState.following_heavy" :step-by-step="stepByStep"
-          :fission-tails="fissionTails"
-          @go-to-step="goToStep" @go-to-branch-step="onGoToBranchStep"
-          @switch-fragment="onSwitchFragment" />
+          :following-heavy="simState.following_heavy" :step-by-step="stepByStep" :fission-tails="fissionTails"
+          @go-to-step="goToStep" @go-to-branch-step="onGoToBranchStep" @switch-fragment="onSwitchFragment" />
       </section>
 
       <!-- Right: controls and details -->
       <aside class="panel" aria-label="Controls">
+        <h2 class="panel-title">Controls</h2>
         <!-- Error display -->
         <p v-if="wasmError" class="error">{{ wasmError }}</p>
 
@@ -274,18 +276,18 @@ onMounted(async () => {
         <div class="section" v-if="simState?.has_fission_branch">
           <h2>Fission Fragment</h2>
           <div class="branch-btns">
-            <button class="branch-btn" :class="{ selected: !simState.following_heavy }" @click="switchBranch('light')">
-              Light fragment
-            </button>
             <button class="branch-btn" :class="{ selected: simState.following_heavy }" @click="switchBranch('heavy')">
               Heavy fragment
+            </button>
+            <button class="branch-btn" :class="{ selected: !simState.following_heavy }" @click="switchBranch('light')">
+              Light fragment
             </button>
           </div>
         </div>
 
         <!-- Current step detail -->
         <div class="section" v-if="simState">
-          <h2>Current Step</h2>
+          <h2>Highlighted Isotope</h2>
           <div class="detail-card" :class="{ unknown: !simState.current_step.nuclide_in_database }">
             <div class="detail-nuclide">{{ simState.current_step.nuclide.notation }}</div>
             <div v-if="!simState.current_step.nuclide_in_database" class="detail-unknown">?? No data available for this
@@ -359,15 +361,34 @@ onMounted(async () => {
   }
 }
 
+/* -- Panel title -- */
+.panel-title {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #6e7681;
+}
+
 /* -- Viewport / chain -- */
 .viewport {
-  padding: 1.5rem;
+  padding: 0;
   overflow-y: auto;
+}
+
+.viewport-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.5rem 0 1.25rem;
 }
 
 .viewport-placeholder {
   height: 100%;
   min-height: 240px;
+  margin: 1.5rem;
   border-radius: 8px;
   border: 1px dashed #484f58;
   display: flex;
@@ -382,7 +403,7 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   gap: 4px;
-  padding: 0.5rem 0.75rem 0;
+  padding: 0.4rem 0.75rem;
 }
 
 .chain-toggle-btn {
@@ -409,7 +430,7 @@ onMounted(async () => {
 
 /* -- Panel -- */
 .panel {
-  padding: 1rem 1.25rem;
+  padding: 0 1.25rem 1rem;
   border-left: 1px solid #30363d;
   background: #161b22;
   overflow-y: auto;
@@ -576,6 +597,7 @@ onMounted(async () => {
   display: flex;
   gap: 2px;
 }
+
 .mode-btn {
   flex: 1;
   padding: 0.3rem 0.5rem;
@@ -588,10 +610,12 @@ onMounted(async () => {
   cursor: pointer;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
+
 .mode-btn:hover {
   color: #e6edf3;
   border-color: #484f58;
 }
+
 .mode-btn.active {
   background: #1f6feb18;
   color: #58a6ff;
