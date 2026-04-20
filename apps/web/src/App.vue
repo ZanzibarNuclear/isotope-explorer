@@ -20,6 +20,7 @@ const wasmError = ref<string | null>(null);
 const session = ref<any>(null);
 const simState = ref<SimState | null>(null);
 const allSteps = ref<StepInfo[]>([]);
+const startingIsotope = ref<string | null>(null);
 
 const canStepBack = computed(() => simState.value && simState.value.cursor > 0);
 const canStepForward = computed(
@@ -39,6 +40,7 @@ function onSelectIsotope(z: number, n: number) {
   try {
     session.value.set_isotope(z, n);
     refreshState();
+    startingIsotope.value = simState.value?.current_step.nuclide.notation ?? null;
     pickerOpen.value = false;
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
@@ -48,6 +50,7 @@ function onSelectIsotope(z: number, n: number) {
 function clearIsotope() {
   simState.value = null;
   allSteps.value = [];
+  startingIsotope.value = null;
   pickerOpen.value = true;
 }
 
@@ -112,7 +115,11 @@ function goToStep(index: number) {
 function switchBranch(fragment: "light" | "heavy") {
   if (!session.value) return;
   try {
-    session.value.switch_branch(fragment);
+    if (stepByStep.value) {
+      session.value.switch_branch_step(fragment);
+    } else {
+      session.value.switch_branch(fragment);
+    }
     refreshState();
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
@@ -155,10 +162,10 @@ onMounted(async () => {
     <!-- Isotope picker (full width) -->
     <section v-if="session" class="picker-area">
       <!-- Collapsed: show selected isotope + change button -->
-      <div v-if="!pickerOpen && simState" class="picker-summary">
-        <span class="picker-summary-label">Selected Isotope</span>
+      <div v-if="!pickerOpen && startingIsotope" class="picker-summary">
+        <span class="picker-summary-label">Starting Isotope</span>
         <span class="picker-summary-sep">·</span>
-        <span class="picker-summary-value">{{ simState.current_step.nuclide.notation }}</span>
+        <span class="picker-summary-value">{{ startingIsotope }}</span>
         <button class="picker-clear-btn" @click="clearIsotope">Change</button>
       </div>
 
@@ -192,7 +199,8 @@ onMounted(async () => {
         <ChainView v-else-if="chainViewMode === 'list'" :steps="allSteps" :cursor="simState.cursor"
           @go-to-step="goToStep" />
         <CardChainView v-else :session="session" :steps="allSteps" :cursor="simState.cursor"
-          :following-heavy="simState.following_heavy" @go-to-step="goToStep" @go-to-branch-step="onGoToBranchStep" />
+          :following-heavy="simState.following_heavy" :step-by-step="stepByStep"
+          @go-to-step="goToStep" @go-to-branch-step="onGoToBranchStep" />
       </section>
 
       <!-- Right: controls and details -->

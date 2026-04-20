@@ -400,13 +400,23 @@ impl SimSession {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
-    /// Switch to following the light or heavy fission fragment.
+    /// Switch to following the light or heavy fission fragment, auto-chaining to stability.
     /// fragment: "light" or "heavy"
     pub fn switch_branch(&mut self, fragment: &str) -> Result<(), JsValue> {
         let follow_light = parse_fission_fragment(fragment).map_err(JsValue::from_str)?;
         self.following_heavy = !follow_light;
         self.sim
             .switch_branch(0, follow_light)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Switch fragment without auto-chaining (step-by-step mode).
+    /// fragment: "light" or "heavy"
+    pub fn switch_branch_step(&mut self, fragment: &str) -> Result<(), JsValue> {
+        let follow_light = parse_fission_fragment(fragment).map_err(JsValue::from_str)?;
+        self.following_heavy = !follow_light;
+        self.sim
+            .switch_branch_step(0, follow_light)
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 

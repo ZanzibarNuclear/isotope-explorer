@@ -7,6 +7,7 @@ const props = defineProps<{
   cursor: number;
   followingHeavy?: boolean;
   session: unknown;
+  stepByStep?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -145,11 +146,11 @@ const lightPreview = ref<StepInfo[]>([]);
 const heavyPreview = ref<StepInfo[]>([]);
 
 watch(
-  () => [props.steps, props.session, fissionIndex.value] as const,
+  () => [props.steps, props.session, fissionIndex.value, props.stepByStep] as const,
   () => {
     const fi = fissionIndex.value;
     const session = props.session as { decay_chain_preview?: (z: number, n: number) => StepInfo[] } | null;
-    if (fi < 0 || !session?.decay_chain_preview) {
+    if (fi < 0 || !session?.decay_chain_preview || props.stepByStep) {
       lightPreview.value = [];
       heavyPreview.value = [];
       return;

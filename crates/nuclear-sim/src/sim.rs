@@ -78,6 +78,12 @@ pub struct FissionBranch {
     pub light: Nuclide,
     /// The heavy fragment.
     pub heavy: Nuclide,
+    /// Whether we are currently following the light fragment (false = following heavy).
+    following_light: bool,
+    /// Steps built so far for the light fragment chain.
+    light_tail: Vec<SimEvent>,
+    /// Steps built so far for the heavy fragment chain.
+    heavy_tail: Vec<SimEvent>,
 }
 
 /// A simulation session. Tracks the full event history and navigation state.
@@ -231,12 +237,18 @@ impl Simulation {
             fission_step,
             light: product.light,
             heavy: product.heavy,
+            following_light: false,
+            light_tail: vec![],
+            heavy_tail: vec![],
         });
 
         self.cursor = self.steps.len() - 1;
 
         if follow_chain {
             self.follow_decay_chain(product.heavy);
+            // Capture the auto-followed chain into heavy_tail for later branch swaps.
+            let branch = self.fission_branches.last_mut().unwrap();
+            branch.heavy_tail = self.steps[fission_step + 1..].to_vec();
         }
     }
 
@@ -319,27 +331,65 @@ impl Simulation {
         self.follow_decay_chain(nuclide);
     }
 
-    /// Switch to following a different fission fragment. This truncates the
-    /// chain after the fission step and follows the chosen fragment instead.
+    /// Switch to following a different fission fragment, auto-following the full decay chain.
     pub fn switch_branch(&mut self, branch_index: usize, follow_light: bool) -> Result<(), SimError> {
-        let branch = self
-            .fission_branches
-            .get(branch_index)
-            .ok_or(SimError::InvalidBranch)?
-            .clone();
+        self.switch_branch_inner(branch_index, follow_light, true)
+    }
 
-        let fragment = if follow_light {
-            branch.light
+    /// Switch to following a different fission fragment without auto-chaining (step-by-step mode).
+    pub fn switch_branch_step(&mut self, branch_index: usize, follow_light: bool) -> Result<(), SimError> {
+        self.switch_branch_inner(branch_index, follow_light, false)
+    }
+
+    fn switch_branch_inner(&mut self, branch_index: usize, follow_light: bool, follow_chain: bool) -> Result<(), SimError> {
+        if self.fission_branches.get(branch_index).is_none() {
+            return Err(SimError::InvalidBranch);
+        }
+
+        let fission_step = self.fission_branches[branch_index].fission_step;
+        let currently_following_light = self.fission_branches[branch_index].following_light;
+
+        // Save the current post-fission steps into the slot for whatever we're leaving.
+        let current_tail: Vec<SimEvent> = self.steps[fission_step + 1..].to_vec();
+        if currently_following_light {
+            self.fission_branches[branch_index].light_tail = current_tail;
         } else {
-            branch.heavy
+            self.fission_branches[branch_index].heavy_tail = current_tail;
+        }
+
+        // Retrieve the already-built tail for the target fragment.
+        let stored_tail = if follow_light {
+            self.fission_branches[branch_index].light_tail.clone()
+        } else {
+            self.fission_branches[branch_index].heavy_tail.clone()
         };
 
-        // Truncate everything after the fission step
-        self.steps.truncate(branch.fission_step + 1);
-        self.cursor = branch.fission_step;
+        // In auto-chain mode, generate a chain if there's nothing stored yet.
+        let new_tail = if follow_chain && stored_tail.is_empty() {
+            let fragment = if follow_light {
+                self.fission_branches[branch_index].light
+            } else {
+                self.fission_branches[branch_index].heavy
+            };
+            let chain = Self::build_decay_chain_events(&self.db, fragment);
+            // Cache it so a second switch doesn't recompute.
+            if follow_light {
+                self.fission_branches[branch_index].light_tail = chain.clone();
+            } else {
+                self.fission_branches[branch_index].heavy_tail = chain.clone();
+            }
+            chain
+        } else {
+            stored_tail
+        };
 
-        // Follow the chosen fragment
-        self.follow_decay_chain(fragment);
+        self.fission_branches[branch_index].following_light = follow_light;
+
+        // Swap the step history.
+        self.steps.truncate(fission_step + 1);
+        self.steps.extend(new_tail);
+        self.cursor = self.steps.len() - 1;
+
         Ok(())
     }
 
