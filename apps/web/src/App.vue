@@ -13,6 +13,8 @@ const pickerOpen = ref(true);
 type ChainViewMode = "list" | "cards";
 const chainViewMode = ref<ChainViewMode>("cards");
 
+const stepByStep = ref(true);
+
 const wasmVersion = ref("...");
 const wasmError = ref<string | null>(null);
 const session = ref<any>(null);
@@ -52,7 +54,11 @@ function clearIsotope() {
 function induceDecay() {
   if (!session.value) return;
   try {
-    session.value.induce_decay();
+    if (stepByStep.value) {
+      session.value.induce_decay();
+    } else {
+      session.value.induce_decay_chain();
+    }
     refreshState();
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
@@ -62,7 +68,11 @@ function induceDecay() {
 function fireNeutron(energy: "slow" | "fast") {
   if (!session.value) return;
   try {
-    session.value.fire_neutron(energy);
+    if (stepByStep.value) {
+      session.value.fire_neutron_step(energy);
+    } else {
+      session.value.fire_neutron(energy);
+    }
     refreshState();
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
@@ -190,15 +200,28 @@ onMounted(async () => {
         <!-- Error display -->
         <p v-if="wasmError" class="error">{{ wasmError }}</p>
 
+        <!-- Mode toggle (always visible once session ready) -->
+        <div class="section" v-if="session">
+          <h2>Mode</h2>
+          <div class="mode-toggle">
+            <button class="mode-btn" :class="{ active: stepByStep }" @click="stepByStep = true">
+              Step-by-step
+            </button>
+            <button class="mode-btn" :class="{ active: !stepByStep }" @click="stepByStep = false">
+              Auto-chain
+            </button>
+          </div>
+        </div>
+
         <!-- Action controls -->
         <div class="section" v-if="simState">
           <h2>Actions</h2>
           <div class="action-btns">
             <button class="fire-btn slow" :disabled="!canFire" @click="fireNeutron('slow')">
-              Slow Neutron
+              Thermal
             </button>
             <button class="fire-btn fast" :disabled="!canFire" @click="fireNeutron('fast')">
-              Fast Neutron
+              Fast
             </button>
             <button class="fire-btn decay" :disabled="!canDecay" @click="induceDecay">
               Induce Decay
@@ -206,8 +229,8 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- Step navigator -->
-        <div class="section" v-if="simState && simState.step_count > 1">
+        <!-- Step navigator (all-at-once mode only) -->
+        <div class="section" v-if="!stepByStep && simState && simState.step_count > 1">
           <h2>Navigate</h2>
           <div class="nav-row">
             <button class="nav-btn" :disabled="!canStepBack" @click="stepBack">&larr; Back</button>
@@ -519,6 +542,33 @@ onMounted(async () => {
 
 .fire-btn.decay:not(:disabled):hover {
   background: #a371f7;
+}
+
+/* -- Mode toggle -- */
+.mode-toggle {
+  display: flex;
+  gap: 2px;
+}
+.mode-btn {
+  flex: 1;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0d1117;
+  color: #6e7681;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.mode-btn:hover {
+  color: #e6edf3;
+  border-color: #484f58;
+}
+.mode-btn.active {
+  background: #1f6feb18;
+  color: #58a6ff;
+  border-color: #1f6feb;
 }
 
 /* -- Navigation -- */

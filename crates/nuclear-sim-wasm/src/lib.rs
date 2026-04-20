@@ -370,7 +370,7 @@ impl SimSession {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
-    /// Fire a neutron. energy: "slow" or "fast".
+    /// Fire a neutron and auto-follow the full decay chain. energy: "slow" or "fast".
     pub fn fire_neutron(&mut self, energy: &str) -> Result<(), JsValue> {
         let e = parse_neutron_energy(energy).map_err(JsValue::from_str)?;
         self.sim
@@ -378,10 +378,25 @@ impl SimSession {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// Fire a neutron — adds only the immediate event, no auto-chain. energy: "slow" or "fast".
+    pub fn fire_neutron_step(&mut self, energy: &str) -> Result<(), JsValue> {
+        let e = parse_neutron_energy(energy).map_err(JsValue::from_str)?;
+        self.sim
+            .fire_neutron_step(e)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Induce a single decay step. Returns error if stable.
     pub fn induce_decay(&mut self) -> Result<(), JsValue> {
         self.sim
             .induce_decay()
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Induce decay and auto-follow the full chain to stability. Returns error if stable.
+    pub fn induce_decay_chain(&mut self) -> Result<(), JsValue> {
+        self.sim
+            .induce_decay_chain()
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 

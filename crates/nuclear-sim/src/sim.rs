@@ -153,15 +153,22 @@ impl Simulation {
         Ok(())
     }
 
-    /// Fire a neutron at the current nuclide.
+    /// Fire a neutron at the current nuclide, then auto-follow the full decay chain
+    /// to stability ("all-at-once" mode).
     ///
-    /// This adds a NeutronAbsorbed event (target absorbs neutron, forming A+1 compound),
-    /// then resolves the outcome: fission (if fissile + slow neutron) or auto-follows
-    /// the decay chain to stability.
-    ///
-    /// The user can fire a neutron at any time -- it truncates any future steps and
-    /// starts a new chain from the current nuclide.
+    /// Truncates any future steps and starts a new chain from the current nuclide.
     pub fn fire_neutron(&mut self, energy: NeutronEnergy) -> Result<(), SimError> {
+        self.fire_neutron_inner(energy, true)
+    }
+
+    /// Fire a neutron at the current nuclide, adding only the immediate event
+    /// (NeutronAbsorbed or Fission) without auto-following the decay chain
+    /// ("step-by-step" mode).
+    pub fn fire_neutron_step(&mut self, energy: NeutronEnergy) -> Result<(), SimError> {
+        self.fire_neutron_inner(energy, false)
+    }
+
+    fn fire_neutron_inner(&mut self, energy: NeutronEnergy, follow_chain: bool) -> Result<(), SimError> {
         if self.steps.is_empty() {
             return Err(SimError::NoStart);
         }
@@ -185,13 +192,13 @@ impl Simulation {
                 && !data.fission_products.is_empty()
             {
                 let product = &data.fission_products[0];
-                self.resolve_fission(target, energy, product.clone());
+                self.resolve_fission(target, energy, product.clone(), follow_chain);
                 return Ok(());
             }
         }
 
         // No fission — absorb the neutron to form a compound nucleus, then
-        // resolve its decay chain.
+        // optionally resolve its decay chain.
         let compound = Nuclide::try_new(target.z(), target.n() + 1)
             .map_err(|e| SimError::UnknownNuclide(e.to_string()))?;
 
@@ -202,12 +209,14 @@ impl Simulation {
         });
         self.cursor = self.steps.len() - 1;
 
-        self.resolve_nuclide(compound);
+        if follow_chain {
+            self.resolve_nuclide(compound);
+        }
         Ok(())
     }
 
     /// Resolve a fission event.
-    fn resolve_fission(&mut self, parent: Nuclide, energy: NeutronEnergy, product: FissionProduct) {
+    fn resolve_fission(&mut self, parent: Nuclide, energy: NeutronEnergy, product: FissionProduct, follow_chain: bool) {
         let fission_step = self.steps.len();
 
         self.steps.push(SimEvent::Fission {
@@ -226,8 +235,9 @@ impl Simulation {
 
         self.cursor = self.steps.len() - 1;
 
-        // Auto-follow the heavy fragment's decay chain
-        self.follow_decay_chain(product.heavy);
+        if follow_chain {
+            self.follow_decay_chain(product.heavy);
+        }
     }
 
     /// Simulate auto-follow decay from a nuclide without mutating step history (for UI previews).
@@ -391,6 +401,31 @@ impl Simulation {
             self.cursor = self.steps.len() - 1;
         }
 
+        Ok(())
+    }
+
+    /// Induce decay and auto-follow the full chain to stability ("all-at-once" mode).
+    pub fn induce_decay_chain(&mut self) -> Result<(), SimError> {
+        if self.steps.is_empty() {
+            return Err(SimError::NoStart);
+        }
+
+        let current = self.current_nuclide();
+        let data = self
+            .db
+            .get(&current)
+            .ok_or_else(|| SimError::UnknownNuclide(current.notation()))?;
+
+        if data.stability == Stability::Stable || data.decay_modes.is_empty() {
+            return Err(SimError::CannotDecay);
+        }
+
+        // Truncate future steps so we branch from here
+        self.steps.truncate(self.cursor + 1);
+        self.fission_branches
+            .retain(|b| b.fission_step <= self.cursor);
+
+        self.follow_decay_chain(current);
         Ok(())
     }
 
