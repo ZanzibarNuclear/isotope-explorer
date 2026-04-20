@@ -11,6 +11,8 @@ declare module "@wasm/nuclear_sim_wasm.js" {
     induce_decay(): void;
     switch_branch(fragment: "light" | "heavy"): void;
     all_nuclide_keys(): { z: number; n: number }[];
+    /** Auto-follow decay preview for a fragment (parallel card columns). */
+    decay_chain_preview(z: number, n: number): StepInfo[];
     step_forward(): void;
     step_back(): void;
     go_to_step(index: number): void;
@@ -50,6 +52,12 @@ declare module "@wasm/nuclear_sim_wasm.js" {
     event_type: string;
     description: string;
     nuclide: NuclideInfo;
+    /** Stable nuclide in DB → UI shows ∞ in the chain meta column (except decay rows). */
+    nuclide_is_stable: boolean;
+    /** Whether this nuclide exists in the simulation database. */
+    nuclide_in_database: boolean;
+    /** Half-life in seconds when radioactive; omitted when stable. */
+    nuclide_half_life_s?: number | null;
     detail?: StepDetail;
   }
 

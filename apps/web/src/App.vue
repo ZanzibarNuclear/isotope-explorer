@@ -2,12 +2,32 @@
 import { onMounted, ref, computed } from "vue";
 import type { SimState, StepInfo } from "@wasm/nuclear_sim_wasm.js";
 import PeriodicTablePicker from "./components/PeriodicTablePicker.vue";
+import QuickPickList from "./components/QuickPickList.vue";
+import ChainView from "./components/ChainView.vue";
+import CardChainView from "./components/CardChainView.vue";
+
+type PickerView = "table" | "quick";
+const pickerView = ref<PickerView>("quick");
+const pickerOpen = ref(true);
+
+type ChainViewMode = "list" | "cards";
+const chainViewMode = ref<ChainViewMode>("cards");
+
+const stepByStep = ref(true);
 
 const wasmVersion = ref("...");
 const wasmError = ref<string | null>(null);
 const session = ref<any>(null);
 const simState = ref<SimState | null>(null);
 const allSteps = ref<StepInfo[]>([]);
+const startingIsotope = ref<string | null>(null);
+
+interface FissionTails {
+  following_light: boolean;
+  light: StepInfo[];
+  heavy: StepInfo[];
+}
+const fissionTails = ref<FissionTails | null>(null);
 
 const canStepBack = computed(() => simState.value && simState.value.cursor > 0);
 const canStepForward = computed(
@@ -20,6 +40,11 @@ function refreshState() {
   if (!session.value) return;
   simState.value = session.value.state();
   allSteps.value = session.value.all_steps();
+  if (stepByStep.value && simState.value?.has_fission_branch) {
+    fissionTails.value = session.value.fission_tails() ?? null;
+  } else {
+    fissionTails.value = null;
+  }
 }
 
 function onSelectIsotope(z: number, n: number) {
@@ -27,15 +52,29 @@ function onSelectIsotope(z: number, n: number) {
   try {
     session.value.set_isotope(z, n);
     refreshState();
+    startingIsotope.value = simState.value?.current_step.nuclide.notation ?? null;
+    pickerOpen.value = false;
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
   }
 }
 
+function clearIsotope() {
+  simState.value = null;
+  allSteps.value = [];
+  startingIsotope.value = null;
+  fissionTails.value = null;
+  pickerOpen.value = true;
+}
+
 function induceDecay() {
   if (!session.value) return;
   try {
-    session.value.induce_decay();
+    if (stepByStep.value) {
+      session.value.induce_decay();
+    } else {
+      session.value.induce_decay_chain();
+    }
     refreshState();
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
@@ -45,7 +84,11 @@ function induceDecay() {
 function fireNeutron(energy: "slow" | "fast") {
   if (!session.value) return;
   try {
-    session.value.fire_neutron(energy);
+    if (stepByStep.value) {
+      session.value.fire_neutron_step(energy);
+    } else {
+      session.value.fire_neutron(energy);
+    }
     refreshState();
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
@@ -85,21 +128,32 @@ function goToStep(index: number) {
 function switchBranch(fragment: "light" | "heavy") {
   if (!session.value) return;
   try {
-    session.value.switch_branch(fragment);
+    if (stepByStep.value) {
+      session.value.switch_branch_step(fragment);
+    } else {
+      session.value.switch_branch(fragment);
+    }
     refreshState();
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
   }
 }
 
-function eventIcon(type: string): string {
-  switch (type) {
-    case "start": return "&#9679;";
-    case "neutron-absorbed": return "&#10141;";
-    case "fission": return "&#10038;";
-    case "decay": return "&#8595;";
-    case "stable": return "&#9632;";
-    default: return "?";
+function onSwitchFragment(leg: "light" | "heavy") {
+  switchBranch(leg);
+}
+
+function onGoToBranchStep(leg: "light" | "heavy", fissionIndex: number, offset: number) {
+  if (!session.value) return;
+  try {
+    const wantHeavy = leg === "heavy";
+    if (simState.value && simState.value.following_heavy !== wantHeavy) {
+      session.value.switch_branch(leg);
+    }
+    session.value.go_to_step(fissionIndex + 1 + offset);
+    refreshState();
+  } catch (e) {
+    wasmError.value = e instanceof Error ? e.message : String(e);
   }
 }
 
@@ -122,50 +176,81 @@ onMounted(async () => {
       <p class="subtitle">Fire neutrons at nuclei and see what happens</p>
     </header>
 
-    <!-- Periodic table picker (full width) -->
+    <!-- Isotope picker (full width) -->
     <section v-if="session" class="picker-area">
-      <PeriodicTablePicker :session="session" @select-isotope="onSelectIsotope" />
+      <!-- Collapsed: show selected isotope + change button -->
+      <div v-if="!pickerOpen && startingIsotope" class="picker-summary">
+        <span class="picker-summary-label">Starting Isotope</span>
+        <span class="picker-summary-sep">·</span>
+        <span class="picker-summary-value">{{ startingIsotope }}</span>
+        <button class="picker-clear-btn" @click="clearIsotope">Change</button>
+      </div>
+
+      <!-- Expanded: full picker UI -->
+      <template v-else>
+        <h2 class="picker-heading">Choose an Isotope</h2>
+        <div class="picker-toggle">
+          <button class="toggle-btn" :class="{ active: pickerView === 'quick' }" @click="pickerView = 'quick'">
+            Quick Pick
+          </button>
+          <button class="toggle-btn" :class="{ active: pickerView === 'table' }" @click="pickerView = 'table'">
+            Periodic Table
+          </button>
+        </div>
+        <PeriodicTablePicker v-if="pickerView === 'table'" :session="session" @select-isotope="onSelectIsotope" />
+        <QuickPickList v-else :session="session" @select-isotope="onSelectIsotope" />
+      </template>
     </section>
 
     <main class="main">
       <!-- Left: chain visualization -->
       <section class="viewport" aria-label="Reaction chain">
+        <div class="viewport-header">
+          <h2 class="panel-title">Action Viewer</h2>
+          <div class="chain-view-toggle" v-if="simState">
+            <button class="chain-toggle-btn" @click="chainViewMode = chainViewMode === 'cards' ? 'list' : 'cards'">
+              {{ chainViewMode === 'cards' ? 'View as a list' : 'View as cards' }}
+            </button>
+          </div>
+        </div>
         <div v-if="!simState" class="viewport-placeholder">
           Choose an isotope to begin.
         </div>
-        <div v-else class="chain">
-          <div
-            v-for="step in allSteps"
-            :key="step.index"
-            class="chain-step"
-            :class="{
-              active: step.index === simState.cursor,
-              fission: step.event_type === 'fission',
-              stable: step.event_type === 'stable',
-            }"
-            @click="goToStep(step.index)"
-          >
-            <span class="chain-icon" v-html="eventIcon(step.event_type)"></span>
-            <span class="chain-label">{{ step.nuclide.notation }}</span>
-            <span class="chain-type">{{ step.event_type }}</span>
-          </div>
-        </div>
+        <ChainView v-else-if="chainViewMode === 'list'" :steps="allSteps" :cursor="simState.cursor"
+          @go-to-step="goToStep" />
+        <CardChainView v-else :session="session" :steps="allSteps" :cursor="simState.cursor"
+          :following-heavy="simState.following_heavy" :step-by-step="stepByStep" :fission-tails="fissionTails"
+          @go-to-step="goToStep" @go-to-branch-step="onGoToBranchStep" @switch-fragment="onSwitchFragment" />
       </section>
 
       <!-- Right: controls and details -->
       <aside class="panel" aria-label="Controls">
+        <h2 class="panel-title">Controls</h2>
         <!-- Error display -->
         <p v-if="wasmError" class="error">{{ wasmError }}</p>
+
+        <!-- Mode toggle (always visible once session ready) -->
+        <div class="section" v-if="session">
+          <h2>Mode</h2>
+          <div class="mode-toggle">
+            <button class="mode-btn" :class="{ active: stepByStep }" @click="stepByStep = true">
+              Step-by-step
+            </button>
+            <button class="mode-btn" :class="{ active: !stepByStep }" @click="stepByStep = false">
+              Auto-chain
+            </button>
+          </div>
+        </div>
 
         <!-- Action controls -->
         <div class="section" v-if="simState">
           <h2>Actions</h2>
           <div class="action-btns">
             <button class="fire-btn slow" :disabled="!canFire" @click="fireNeutron('slow')">
-              Slow Neutron
+              Thermal
             </button>
             <button class="fire-btn fast" :disabled="!canFire" @click="fireNeutron('fast')">
-              Fast Neutron
+              Fast
             </button>
             <button class="fire-btn decay" :disabled="!canDecay" @click="induceDecay">
               Induce Decay
@@ -173,8 +258,8 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- Step navigator -->
-        <div class="section" v-if="simState && simState.step_count > 1">
+        <!-- Step navigator (all-at-once mode only) -->
+        <div class="section" v-if="!stepByStep && simState && simState.step_count > 1">
           <h2>Navigate</h2>
           <div class="nav-row">
             <button class="nav-btn" :disabled="!canStepBack" @click="stepBack">&larr; Back</button>
@@ -191,28 +276,22 @@ onMounted(async () => {
         <div class="section" v-if="simState?.has_fission_branch">
           <h2>Fission Fragment</h2>
           <div class="branch-btns">
-            <button
-              class="branch-btn"
-              :class="{ selected: !simState.following_heavy }"
-              @click="switchBranch('light')"
-            >
-              Light fragment
-            </button>
-            <button
-              class="branch-btn"
-              :class="{ selected: simState.following_heavy }"
-              @click="switchBranch('heavy')"
-            >
+            <button class="branch-btn" :class="{ selected: simState.following_heavy }" @click="switchBranch('heavy')">
               Heavy fragment
+            </button>
+            <button class="branch-btn" :class="{ selected: !simState.following_heavy }" @click="switchBranch('light')">
+              Light fragment
             </button>
           </div>
         </div>
 
         <!-- Current step detail -->
         <div class="section" v-if="simState">
-          <h2>Current Step</h2>
-          <div class="detail-card">
+          <h2>Highlighted Isotope</h2>
+          <div class="detail-card" :class="{ unknown: !simState.current_step.nuclide_in_database }">
             <div class="detail-nuclide">{{ simState.current_step.nuclide.notation }}</div>
+            <div v-if="!simState.current_step.nuclide_in_database" class="detail-unknown">?? No data available for this
+              nuclide</div>
             <div class="detail-desc">{{ simState.current_step.description }}</div>
             <dl class="detail-props">
               <dt>Type</dt>
@@ -255,11 +334,13 @@ onMounted(async () => {
   padding: 1rem 1.25rem;
   border-bottom: 1px solid #30363d;
 }
+
 .header h1 {
   margin: 0;
   font-size: 1.35rem;
   font-weight: 600;
 }
+
 .subtitle {
   margin: 0.35rem 0 0;
   font-size: 0.875rem;
@@ -273,18 +354,41 @@ onMounted(async () => {
   gap: 0;
   min-height: 0;
 }
+
 @media (max-width: 720px) {
-  .main { grid-template-columns: 1fr; }
+  .main {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* -- Panel title -- */
+.panel-title {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #6e7681;
 }
 
 /* -- Viewport / chain -- */
 .viewport {
-  padding: 1.5rem;
+  padding: 0;
   overflow-y: auto;
 }
+
+.viewport-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.5rem 0 1.25rem;
+}
+
 .viewport-placeholder {
   height: 100%;
   min-height: 240px;
+  margin: 1.5rem;
   border-radius: 8px;
   border: 1px dashed #484f58;
   display: flex;
@@ -294,63 +398,55 @@ onMounted(async () => {
   font-size: 0.95rem;
 }
 
-.chain {
+/* -- Chain view toggle -- */
+.chain-view-toggle {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0.4rem 0.75rem;
 }
-.chain-step {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+
+.chain-toggle-btn {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  background: transparent;
+  color: #6e7681;
+  font-size: 0.75rem;
   cursor: pointer;
-  transition: background 0.15s;
-  font-size: 0.9rem;
+  transition: color 0.12s, border-color 0.12s;
 }
-.chain-step:hover {
-  background: #1c2128;
+
+.chain-toggle-btn:hover {
+  color: #e6edf3;
+  border-color: #484f58;
 }
-.chain-step.active {
-  background: #1f6feb33;
-  outline: 1px solid #1f6feb;
-}
-.chain-step.fission {
-  border-left: 3px solid #f0883e;
-}
-.chain-step.stable {
-  border-left: 3px solid #3fb950;
-}
-.chain-icon {
-  font-size: 0.85rem;
-  width: 1.2rem;
-  text-align: center;
-  color: #8b949e;
-}
-.chain-label {
-  font-weight: 600;
-  min-width: 4.5rem;
-}
-.chain-type {
-  color: #8b949e;
-  font-size: 0.8rem;
+
+.chain-toggle-btn.active {
+  color: #e6edf3;
+  border-color: #58a6ff;
+  background: #1f6feb18;
 }
 
 /* -- Panel -- */
 .panel {
-  padding: 1rem 1.25rem;
+  padding: 0 1.25rem 1rem;
   border-left: 1px solid #30363d;
   background: #161b22;
   overflow-y: auto;
 }
+
 @media (max-width: 720px) {
-  .panel { border-left: none; border-top: 1px solid #30363d; }
+  .panel {
+    border-left: none;
+    border-top: 1px solid #30363d;
+  }
 }
 
 .section {
   margin-bottom: 1.25rem;
 }
+
 .section h2 {
   margin: 0 0 0.5rem;
   font-size: 0.85rem;
@@ -365,12 +461,93 @@ onMounted(async () => {
   border-bottom: 1px solid #30363d;
 }
 
+.picker-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1.25rem;
+  background: #0d1117;
+  font-size: 0.875rem;
+}
+
+.picker-summary-label {
+  color: #8b949e;
+  font-weight: 500;
+}
+
+.picker-summary-sep {
+  color: #484f58;
+}
+
+.picker-summary-value {
+  font-weight: 700;
+  color: #e6edf3;
+  font-size: 1rem;
+}
+
+.picker-clear-btn {
+  padding: 0.25rem 0.7rem;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #21262d;
+  color: #8b949e;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.picker-clear-btn:hover {
+  color: #e6edf3;
+  border-color: #58a6ff;
+}
+
+.picker-heading {
+  margin: 0;
+  padding: 0.6rem 1.25rem 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e6edf3;
+  background: #0d1117;
+}
+
+.picker-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 0.5rem 1.25rem 0;
+  background: #0d1117;
+}
+
+.toggle-btn {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid #30363d;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: #161b22;
+  color: #8b949e;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.toggle-btn:hover {
+  background: #21262d;
+  color: #e6edf3;
+}
+
+.toggle-btn.active {
+  background: #21262d;
+  color: #e6edf3;
+  border-color: #30363d;
+}
+
 /* -- Action buttons -- */
 .action-btns {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
 .fire-btn {
   flex: 1;
   min-width: 7rem;
@@ -382,30 +559,67 @@ onMounted(async () => {
   cursor: pointer;
   transition: opacity 0.15s;
 }
+
 .fire-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
+
 .fire-btn.slow {
   background: #1f6feb;
   color: #fff;
 }
+
 .fire-btn.slow:not(:disabled):hover {
   background: #388bfd;
 }
+
 .fire-btn.fast {
   background: #f0883e;
   color: #fff;
 }
+
 .fire-btn.fast:not(:disabled):hover {
   background: #f39c55;
 }
+
 .fire-btn.decay {
   background: #8957e5;
   color: #fff;
 }
+
 .fire-btn.decay:not(:disabled):hover {
   background: #a371f7;
+}
+
+/* -- Mode toggle -- */
+.mode-toggle {
+  display: flex;
+  gap: 2px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0d1117;
+  color: #6e7681;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.mode-btn:hover {
+  color: #e6edf3;
+  border-color: #484f58;
+}
+
+.mode-btn.active {
+  background: #1f6feb18;
+  color: #58a6ff;
+  border-color: #1f6feb;
 }
 
 /* -- Navigation -- */
@@ -414,6 +628,7 @@ onMounted(async () => {
   align-items: center;
   gap: 0.5rem;
 }
+
 .nav-btn {
   padding: 0.35rem 0.7rem;
   border: 1px solid #30363d;
@@ -423,13 +638,16 @@ onMounted(async () => {
   font-size: 0.85rem;
   cursor: pointer;
 }
+
 .nav-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
+
 .nav-btn:not(:disabled):hover {
   border-color: #58a6ff;
 }
+
 .step-counter {
   flex: 1;
   text-align: center;
@@ -442,6 +660,7 @@ onMounted(async () => {
   display: flex;
   gap: 0.5rem;
 }
+
 .branch-btn {
   flex: 1;
   padding: 0.4rem;
@@ -452,10 +671,12 @@ onMounted(async () => {
   font-size: 0.85rem;
   cursor: pointer;
 }
+
 .branch-btn.selected {
   border-color: #58a6ff;
   background: #1f6feb33;
 }
+
 .branch-btn:hover {
   border-color: #58a6ff;
 }
@@ -467,16 +688,19 @@ onMounted(async () => {
   border-radius: 8px;
   padding: 0.75rem;
 }
+
 .detail-nuclide {
   font-size: 1.4rem;
   font-weight: 700;
   margin-bottom: 0.25rem;
 }
+
 .detail-desc {
   font-size: 0.85rem;
   color: #8b949e;
   margin-bottom: 0.6rem;
 }
+
 .detail-props {
   margin: 0;
   display: grid;
@@ -484,11 +708,26 @@ onMounted(async () => {
   gap: 0.25rem 0.75rem;
   font-size: 0.825rem;
 }
+
 .detail-props dt {
   color: #8b949e;
 }
+
 .detail-props dd {
   margin: 0;
+}
+
+/* -- Unknown nuclide indicator -- */
+.detail-card.unknown {
+  border-color: #d29922;
+  border-style: dashed;
+}
+
+.detail-unknown {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #d29922;
+  margin-bottom: 0.4rem;
 }
 
 .error {
@@ -496,6 +735,7 @@ onMounted(async () => {
   font-size: 0.875rem;
   margin: 0 0 1rem;
 }
+
 .version {
   margin: 1.5rem 0 0;
   font-size: 0.75rem;

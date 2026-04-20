@@ -35,8 +35,11 @@ pub enum SimEvent {
         compound: Nuclide,
     },
     /// Compound nucleus underwent fission.
+    /// Neutron-induced fission: the target absorbs a neutron and immediately
+    /// splits — no intermediate compound nucleus is formed as a separate step.
     Fission {
         parent: Nuclide,
+        energy: NeutronEnergy,
         light: Nuclide,
         heavy: Nuclide,
         neutrons_released: u8,
@@ -75,6 +78,18 @@ pub struct FissionBranch {
     pub light: Nuclide,
     /// The heavy fragment.
     pub heavy: Nuclide,
+    /// Whether we are currently following the light fragment (false = following heavy).
+    following_light: bool,
+    /// Steps built so far for the light fragment chain.
+    light_tail: Vec<SimEvent>,
+    /// Steps built so far for the heavy fragment chain.
+    heavy_tail: Vec<SimEvent>,
+}
+
+impl FissionBranch {
+    pub fn following_light(&self) -> bool { self.following_light }
+    pub fn light_tail(&self) -> &[SimEvent] { &self.light_tail }
+    pub fn heavy_tail(&self) -> &[SimEvent] { &self.heavy_tail }
 }
 
 /// A simulation session. Tracks the full event history and navigation state.
@@ -150,15 +165,22 @@ impl Simulation {
         Ok(())
     }
 
-    /// Fire a neutron at the current nuclide.
+    /// Fire a neutron at the current nuclide, then auto-follow the full decay chain
+    /// to stability ("all-at-once" mode).
     ///
-    /// This adds a NeutronAbsorbed event (target absorbs neutron, forming A+1 compound),
-    /// then resolves the outcome: fission (if fissile + slow neutron) or auto-follows
-    /// the decay chain to stability.
-    ///
-    /// The user can fire a neutron at any time -- it truncates any future steps and
-    /// starts a new chain from the current nuclide.
+    /// Truncates any future steps and starts a new chain from the current nuclide.
     pub fn fire_neutron(&mut self, energy: NeutronEnergy) -> Result<(), SimError> {
+        self.fire_neutron_inner(energy, true)
+    }
+
+    /// Fire a neutron at the current nuclide, adding only the immediate event
+    /// (NeutronAbsorbed or Fission) without auto-following the decay chain
+    /// ("step-by-step" mode).
+    pub fn fire_neutron_step(&mut self, energy: NeutronEnergy) -> Result<(), SimError> {
+        self.fire_neutron_inner(energy, false)
+    }
+
+    fn fire_neutron_inner(&mut self, energy: NeutronEnergy, follow_chain: bool) -> Result<(), SimError> {
         if self.steps.is_empty() {
             return Err(SimError::NoStart);
         }
@@ -171,7 +193,24 @@ impl Simulation {
 
         let target = self.current_nuclide();
 
-        // Absorb the neutron: Z stays the same, N+1
+        // Check the target for fissile flag before absorbing the neutron.
+        // In fission, there is no intermediate compound nucleus — the target
+        // absorbs the neutron and splits in a single action.
+        let target_data = self.db.get(&target);
+
+        if let Some(data) = target_data {
+            if data.is_fissile()
+                && energy == NeutronEnergy::Slow
+                && !data.fission_products.is_empty()
+            {
+                let product = &data.fission_products[0];
+                self.resolve_fission(target, energy, product.clone(), follow_chain);
+                return Ok(());
+            }
+        }
+
+        // No fission — absorb the neutron to form a compound nucleus, then
+        // optionally resolve its decay chain.
         let compound = Nuclide::try_new(target.z(), target.n() + 1)
             .map_err(|e| SimError::UnknownNuclide(e.to_string()))?;
 
@@ -182,30 +221,19 @@ impl Simulation {
         });
         self.cursor = self.steps.len() - 1;
 
-        // Now resolve what happens to the compound nucleus.
-        // Check the *target* for fissile flag (U-235 is fissile, the compound U-236 fissions).
-        let target_data = self.db.get(&target);
-
-        if let Some(data) = target_data {
-            if data.fissile && energy == NeutronEnergy::Slow && !data.fission_products.is_empty() {
-                // Fission! Use the first product pair for now.
-                let product = &data.fission_products[0];
-                self.resolve_fission(compound, product.clone());
-                return Ok(());
-            }
+        if follow_chain {
+            self.resolve_nuclide(compound);
         }
-
-        // No fission -- resolve the compound nucleus
-        self.resolve_nuclide(compound);
         Ok(())
     }
 
     /// Resolve a fission event.
-    fn resolve_fission(&mut self, parent: Nuclide, product: FissionProduct) {
+    fn resolve_fission(&mut self, parent: Nuclide, energy: NeutronEnergy, product: FissionProduct, follow_chain: bool) {
         let fission_step = self.steps.len();
 
         self.steps.push(SimEvent::Fission {
             parent,
+            energy,
             light: product.light,
             heavy: product.heavy,
             neutrons_released: product.neutrons_released,
@@ -215,16 +243,29 @@ impl Simulation {
             fission_step,
             light: product.light,
             heavy: product.heavy,
+            following_light: false,
+            light_tail: vec![],
+            heavy_tail: vec![],
         });
 
         self.cursor = self.steps.len() - 1;
 
-        // Auto-follow the heavy fragment's decay chain
-        self.follow_decay_chain(product.heavy);
+        if follow_chain {
+            self.follow_decay_chain(product.heavy);
+            // Capture the auto-followed chain into heavy_tail for later branch swaps.
+            let branch = self.fission_branches.last_mut().unwrap();
+            branch.heavy_tail = self.steps[fission_step + 1..].to_vec();
+        }
     }
 
-    /// Follow a nuclide's decay chain until it reaches stability or we run out of data.
-    fn follow_decay_chain(&mut self, start: Nuclide) {
+    /// Simulate auto-follow decay from a nuclide without mutating step history (for UI previews).
+    pub fn decay_chain_events(&self, start: Nuclide) -> Vec<SimEvent> {
+        Self::build_decay_chain_events(&self.db, start)
+    }
+
+    /// Same rules as [`Self::follow_decay_chain`], but returns events only.
+    fn build_decay_chain_events(db: &NuclideDatabase, start: Nuclide) -> Vec<SimEvent> {
+        let mut out = Vec::new();
         let mut current = start;
         let max_steps = 50; // safety limit
         let mut count = 0;
@@ -235,32 +276,25 @@ impl Simulation {
             }
             count += 1;
 
-            let data = match self.db.get(&current) {
+            let data = match db.get(&current) {
                 Some(d) => d.clone(),
                 None => {
-                    // Unknown nuclide -- treat as stable (we don't have data for it)
-                    self.steps.push(SimEvent::Stable { nuclide: current });
-                    self.cursor = self.steps.len() - 1;
+                    out.push(SimEvent::Stable { nuclide: current });
                     break;
                 }
             };
 
             match data.stability {
                 Stability::Stable => {
-                    self.steps.push(SimEvent::Stable { nuclide: current });
-                    self.cursor = self.steps.len() - 1;
+                    out.push(SimEvent::Stable { nuclide: current });
                     break;
                 }
                 Stability::Radioactive => {
                     if data.decay_modes.is_empty() {
-                        // No decay data -- treat as stable
-                        self.steps.push(SimEvent::Stable { nuclide: current });
-                        self.cursor = self.steps.len() - 1;
+                        out.push(SimEvent::Stable { nuclide: current });
                         break;
                     }
 
-                    // Pick the dominant decay mode (highest branching fraction).
-                    // TODO: use RNG weighted by branching fractions for variety.
                     let branch = data
                         .decay_modes
                         .iter()
@@ -270,23 +304,31 @@ impl Simulation {
                     let daughter = match branch.mode.daughter(&current) {
                         Some(d) => d,
                         None => {
-                            // Decay math failed (shouldn't happen with valid data)
-                            self.steps.push(SimEvent::Stable { nuclide: current });
-                            self.cursor = self.steps.len() - 1;
+                            out.push(SimEvent::Stable { nuclide: current });
                             break;
                         }
                     };
 
-                    self.steps.push(SimEvent::Decay {
+                    out.push(SimEvent::Decay {
                         parent: current,
                         mode: branch.mode,
                         daughter,
                     });
-                    self.cursor = self.steps.len() - 1;
 
                     current = daughter;
                 }
             }
+        }
+
+        out
+    }
+
+    /// Follow a nuclide's decay chain until it reaches stability or we run out of data.
+    fn follow_decay_chain(&mut self, start: Nuclide) {
+        let chain = Self::build_decay_chain_events(&self.db, start);
+        for e in chain {
+            self.steps.push(e);
+            self.cursor = self.steps.len() - 1;
         }
     }
 
@@ -295,27 +337,65 @@ impl Simulation {
         self.follow_decay_chain(nuclide);
     }
 
-    /// Switch to following a different fission fragment. This truncates the
-    /// chain after the fission step and follows the chosen fragment instead.
+    /// Switch to following a different fission fragment, auto-following the full decay chain.
     pub fn switch_branch(&mut self, branch_index: usize, follow_light: bool) -> Result<(), SimError> {
-        let branch = self
-            .fission_branches
-            .get(branch_index)
-            .ok_or(SimError::InvalidBranch)?
-            .clone();
+        self.switch_branch_inner(branch_index, follow_light, true)
+    }
 
-        let fragment = if follow_light {
-            branch.light
+    /// Switch to following a different fission fragment without auto-chaining (step-by-step mode).
+    pub fn switch_branch_step(&mut self, branch_index: usize, follow_light: bool) -> Result<(), SimError> {
+        self.switch_branch_inner(branch_index, follow_light, false)
+    }
+
+    fn switch_branch_inner(&mut self, branch_index: usize, follow_light: bool, follow_chain: bool) -> Result<(), SimError> {
+        if self.fission_branches.get(branch_index).is_none() {
+            return Err(SimError::InvalidBranch);
+        }
+
+        let fission_step = self.fission_branches[branch_index].fission_step;
+        let currently_following_light = self.fission_branches[branch_index].following_light;
+
+        // Save the current post-fission steps into the slot for whatever we're leaving.
+        let current_tail: Vec<SimEvent> = self.steps[fission_step + 1..].to_vec();
+        if currently_following_light {
+            self.fission_branches[branch_index].light_tail = current_tail;
         } else {
-            branch.heavy
+            self.fission_branches[branch_index].heavy_tail = current_tail;
+        }
+
+        // Retrieve the already-built tail for the target fragment.
+        let stored_tail = if follow_light {
+            self.fission_branches[branch_index].light_tail.clone()
+        } else {
+            self.fission_branches[branch_index].heavy_tail.clone()
         };
 
-        // Truncate everything after the fission step
-        self.steps.truncate(branch.fission_step + 1);
-        self.cursor = branch.fission_step;
+        // In auto-chain mode, generate a chain if there's nothing stored yet.
+        let new_tail = if follow_chain && stored_tail.is_empty() {
+            let fragment = if follow_light {
+                self.fission_branches[branch_index].light
+            } else {
+                self.fission_branches[branch_index].heavy
+            };
+            let chain = Self::build_decay_chain_events(&self.db, fragment);
+            // Cache it so a second switch doesn't recompute.
+            if follow_light {
+                self.fission_branches[branch_index].light_tail = chain.clone();
+            } else {
+                self.fission_branches[branch_index].heavy_tail = chain.clone();
+            }
+            chain
+        } else {
+            stored_tail
+        };
 
-        // Follow the chosen fragment
-        self.follow_decay_chain(fragment);
+        self.fission_branches[branch_index].following_light = follow_light;
+
+        // Swap the step history.
+        self.steps.truncate(fission_step + 1);
+        self.steps.extend(new_tail);
+        self.cursor = self.steps.len() - 1;
+
         Ok(())
     }
 
@@ -380,6 +460,31 @@ impl Simulation {
         Ok(())
     }
 
+    /// Induce decay and auto-follow the full chain to stability ("all-at-once" mode).
+    pub fn induce_decay_chain(&mut self) -> Result<(), SimError> {
+        if self.steps.is_empty() {
+            return Err(SimError::NoStart);
+        }
+
+        let current = self.current_nuclide();
+        let data = self
+            .db
+            .get(&current)
+            .ok_or_else(|| SimError::UnknownNuclide(current.notation()))?;
+
+        if data.stability == Stability::Stable || data.decay_modes.is_empty() {
+            return Err(SimError::CannotDecay);
+        }
+
+        // Truncate future steps so we branch from here
+        self.steps.truncate(self.cursor + 1);
+        self.fission_branches
+            .retain(|b| b.fission_step <= self.cursor);
+
+        self.follow_decay_chain(current);
+        Ok(())
+    }
+
     /// Can the current nuclide decay? (i.e., is it radioactive with known decay modes)
     pub fn can_decay(&self) -> bool {
         if self.steps.is_empty() {
@@ -393,8 +498,13 @@ impl Simulation {
     }
 
     /// Can a neutron be fired at the current nuclide?
+    /// Returns false when the current nuclide is not in the database (beyond known data).
     pub fn can_fire(&self) -> bool {
-        !self.steps.is_empty()
+        if self.steps.is_empty() {
+            return false;
+        }
+        let current = self.current_nuclide();
+        self.db.get(&current).is_some()
     }
 
     // -- Navigation --
@@ -434,11 +544,19 @@ impl Simulation {
     }
 
     /// The nuclide at the current cursor position.
+    ///
+    /// Special case: when the cursor is sitting on a fission event, `resulting_nuclide()`
+    /// always returns the heavy fragment.  We override that here so the result reflects
+    /// whichever fragment is actually being followed.
     pub fn current_nuclide(&self) -> Nuclide {
-        self.steps
-            .get(self.cursor)
-            .map(|e| e.resulting_nuclide())
-            .expect("simulation should have at least a Start event")
+        let event = self.steps.get(self.cursor).expect("simulation should have at least a Start event");
+        if let SimEvent::Fission { light, heavy, .. } = event {
+            if let Some(branch) = self.fission_branches.iter().find(|b| b.fission_step == self.cursor) {
+                return if branch.following_light { *light } else { *heavy };
+            }
+            return *heavy; // fallback (no branch recorded)
+        }
+        event.resulting_nuclide()
     }
 
     /// Current step index.
@@ -540,6 +658,22 @@ mod tests {
         // Should now end at Zr-92
         assert!(sim.is_complete());
         assert_eq!(sim.current_nuclide().notation(), "Zr-92");
+    }
+
+    #[test]
+    fn decay_chain_events_matches_followed_tail_after_fission() {
+        let mut sim = new_sim();
+        sim.set_isotope(92, 143).unwrap();
+        sim.fire_neutron(NeutronEnergy::Slow).unwrap();
+
+        let branch = sim.fission_branches()[0].clone();
+        let fi = branch.fission_step;
+        let preview = sim.decay_chain_events(branch.heavy);
+        let tail: Vec<SimEvent> = sim.steps()[fi + 1..].to_vec();
+        assert_eq!(preview.len(), tail.len(), "preview should match auto-follow tail");
+        for (a, b) in preview.iter().zip(tail.iter()) {
+            assert_eq!(a.resulting_nuclide(), b.resulting_nuclide());
+        }
     }
 
     #[test]

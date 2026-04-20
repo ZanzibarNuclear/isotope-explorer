@@ -1,0 +1,761 @@
+{
+  "source": "Curated from ENDF/B-VIII.0 fission yield sublibrary and England & Rider (1994)",
+  "parent_count": 11,
+  "fission_yields": {
+    "92_141": {
+      "z": 92,
+      "n": 141,
+      "a": 233,
+      "energy": "thermal",
+      "avg_neutrons": 2.49,
+      "product_pairs": [
+        {
+          "light_z": 38,
+          "light_n": 57,
+          "heavy_z": 54,
+          "heavy_n": 83,
+          "neutrons": 2,
+          "yield": 0.059
+        },
+        {
+          "light_z": 36,
+          "light_n": 54,
+          "heavy_z": 56,
+          "heavy_n": 85,
+          "neutrons": 3,
+          "yield": 0.052
+        },
+        {
+          "light_z": 40,
+          "light_n": 59,
+          "heavy_z": 52,
+          "heavy_n": 80,
+          "neutrons": 3,
+          "yield": 0.047
+        },
+        {
+          "light_z": 42,
+          "light_n": 60,
+          "heavy_z": 50,
+          "heavy_n": 79,
+          "neutrons": 3,
+          "yield": 0.038
+        },
+        {
+          "light_z": 37,
+          "light_n": 54,
+          "heavy_z": 55,
+          "heavy_n": 85,
+          "neutrons": 3,
+          "yield": 0.036
+        },
+        {
+          "light_z": 39,
+          "light_n": 57,
+          "heavy_z": 53,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.034
+        },
+        {
+          "light_z": 34,
+          "light_n": 50,
+          "heavy_z": 58,
+          "heavy_n": 89,
+          "neutrons": 3,
+          "yield": 0.028
+        },
+        {
+          "light_z": 35,
+          "light_n": 52,
+          "heavy_z": 57,
+          "heavy_n": 87,
+          "neutrons": 3,
+          "yield": 0.025
+        }
+      ]
+    },
+    "92_143": {
+      "z": 92,
+      "n": 143,
+      "a": 235,
+      "energy": "thermal",
+      "avg_neutrons": 2.43,
+      "product_pairs": [
+        {
+          "light_z": 38,
+          "light_n": 57,
+          "heavy_z": 54,
+          "heavy_n": 85,
+          "neutrons": 2,
+          "yield": 0.065
+        },
+        {
+          "light_z": 36,
+          "light_n": 57,
+          "heavy_z": 56,
+          "heavy_n": 84,
+          "neutrons": 3,
+          "yield": 0.064
+        },
+        {
+          "light_z": 36,
+          "light_n": 56,
+          "heavy_z": 56,
+          "heavy_n": 85,
+          "neutrons": 3,
+          "yield": 0.063
+        },
+        {
+          "light_z": 38,
+          "light_n": 56,
+          "heavy_z": 54,
+          "heavy_n": 85,
+          "neutrons": 3,
+          "yield": 0.059
+        },
+        {
+          "light_z": 40,
+          "light_n": 59,
+          "heavy_z": 52,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.05
+        },
+        {
+          "light_z": 37,
+          "light_n": 56,
+          "heavy_z": 55,
+          "heavy_n": 85,
+          "neutrons": 3,
+          "yield": 0.049
+        },
+        {
+          "light_z": 39,
+          "light_n": 57,
+          "heavy_z": 53,
+          "heavy_n": 84,
+          "neutrons": 3,
+          "yield": 0.045
+        },
+        {
+          "light_z": 42,
+          "light_n": 59,
+          "heavy_z": 50,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.032
+        },
+        {
+          "light_z": 41,
+          "light_n": 59,
+          "heavy_z": 51,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.028
+        },
+        {
+          "light_z": 35,
+          "light_n": 52,
+          "heavy_z": 57,
+          "heavy_n": 89,
+          "neutrons": 3,
+          "yield": 0.025
+        }
+      ]
+    },
+    "92_146": {
+      "z": 92,
+      "n": 146,
+      "a": 238,
+      "energy": "fast",
+      "avg_neutrons": 2.49,
+      "product_pairs": [
+        {
+          "light_z": 38,
+          "light_n": 58,
+          "heavy_z": 54,
+          "heavy_n": 86,
+          "neutrons": 3,
+          "yield": 0.056
+        },
+        {
+          "light_z": 36,
+          "light_n": 57,
+          "heavy_z": 56,
+          "heavy_n": 87,
+          "neutrons": 3,
+          "yield": 0.051
+        },
+        {
+          "light_z": 40,
+          "light_n": 60,
+          "heavy_z": 52,
+          "heavy_n": 84,
+          "neutrons": 3,
+          "yield": 0.048
+        },
+        {
+          "light_z": 38,
+          "light_n": 57,
+          "heavy_z": 54,
+          "heavy_n": 86,
+          "neutrons": 4,
+          "yield": 0.044
+        },
+        {
+          "light_z": 42,
+          "light_n": 61,
+          "heavy_z": 50,
+          "heavy_n": 82,
+          "neutrons": 4,
+          "yield": 0.035
+        },
+        {
+          "light_z": 37,
+          "light_n": 56,
+          "heavy_z": 55,
+          "heavy_n": 87,
+          "neutrons": 4,
+          "yield": 0.033
+        },
+        {
+          "light_z": 39,
+          "light_n": 58,
+          "heavy_z": 53,
+          "heavy_n": 85,
+          "neutrons": 4,
+          "yield": 0.031
+        },
+        {
+          "light_z": 34,
+          "light_n": 50,
+          "heavy_z": 58,
+          "heavy_n": 93,
+          "neutrons": 4,
+          "yield": 0.022
+        }
+      ]
+    },
+    "94_145": {
+      "z": 94,
+      "n": 145,
+      "a": 239,
+      "energy": "thermal",
+      "avg_neutrons": 2.88,
+      "product_pairs": [
+        {
+          "light_z": 42,
+          "light_n": 61,
+          "heavy_z": 52,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.061
+        },
+        {
+          "light_z": 40,
+          "light_n": 60,
+          "heavy_z": 54,
+          "heavy_n": 83,
+          "neutrons": 3,
+          "yield": 0.058
+        },
+        {
+          "light_z": 38,
+          "light_n": 58,
+          "heavy_z": 56,
+          "heavy_n": 85,
+          "neutrons": 3,
+          "yield": 0.049
+        },
+        {
+          "light_z": 42,
+          "light_n": 62,
+          "heavy_z": 52,
+          "heavy_n": 81,
+          "neutrons": 3,
+          "yield": 0.047
+        },
+        {
+          "light_z": 44,
+          "light_n": 62,
+          "heavy_z": 50,
+          "heavy_n": 81,
+          "neutrons": 3,
+          "yield": 0.042
+        },
+        {
+          "light_z": 36,
+          "light_n": 56,
+          "heavy_z": 58,
+          "heavy_n": 87,
+          "neutrons": 3,
+          "yield": 0.035
+        },
+        {
+          "light_z": 39,
+          "light_n": 59,
+          "heavy_z": 55,
+          "heavy_n": 84,
+          "neutrons": 3,
+          "yield": 0.04
+        },
+        {
+          "light_z": 41,
+          "light_n": 60,
+          "heavy_z": 53,
+          "heavy_n": 83,
+          "neutrons": 3,
+          "yield": 0.038
+        },
+        {
+          "light_z": 43,
+          "light_n": 63,
+          "heavy_z": 51,
+          "heavy_n": 80,
+          "neutrons": 3,
+          "yield": 0.033
+        },
+        {
+          "light_z": 37,
+          "light_n": 57,
+          "heavy_z": 57,
+          "heavy_n": 86,
+          "neutrons": 3,
+          "yield": 0.028
+        }
+      ]
+    },
+    "94_147": {
+      "z": 94,
+      "n": 147,
+      "a": 241,
+      "energy": "thermal",
+      "avg_neutrons": 2.94,
+      "product_pairs": [
+        {
+          "light_z": 42,
+          "light_n": 62,
+          "heavy_z": 52,
+          "heavy_n": 83,
+          "neutrons": 3,
+          "yield": 0.06
+        },
+        {
+          "light_z": 40,
+          "light_n": 60,
+          "heavy_z": 54,
+          "heavy_n": 85,
+          "neutrons": 3,
+          "yield": 0.055
+        },
+        {
+          "light_z": 38,
+          "light_n": 58,
+          "heavy_z": 56,
+          "heavy_n": 87,
+          "neutrons": 3,
+          "yield": 0.046
+        },
+        {
+          "light_z": 44,
+          "light_n": 63,
+          "heavy_z": 50,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.044
+        },
+        {
+          "light_z": 42,
+          "light_n": 63,
+          "heavy_z": 52,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.042
+        },
+        {
+          "light_z": 39,
+          "light_n": 60,
+          "heavy_z": 55,
+          "heavy_n": 85,
+          "neutrons": 3,
+          "yield": 0.038
+        },
+        {
+          "light_z": 36,
+          "light_n": 56,
+          "heavy_z": 58,
+          "heavy_n": 89,
+          "neutrons": 3,
+          "yield": 0.032
+        },
+        {
+          "light_z": 41,
+          "light_n": 61,
+          "heavy_z": 53,
+          "heavy_n": 84,
+          "neutrons": 3,
+          "yield": 0.035
+        },
+        {
+          "light_z": 43,
+          "light_n": 63,
+          "heavy_z": 51,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.03
+        }
+      ]
+    },
+    "90_142": {
+      "z": 90,
+      "n": 142,
+      "a": 232,
+      "energy": "fast",
+      "avg_neutrons": 2.12,
+      "product_pairs": [
+        {
+          "light_z": 36,
+          "light_n": 54,
+          "heavy_z": 54,
+          "heavy_n": 87,
+          "neutrons": 2,
+          "yield": 0.055
+        },
+        {
+          "light_z": 38,
+          "light_n": 56,
+          "heavy_z": 52,
+          "heavy_n": 85,
+          "neutrons": 2,
+          "yield": 0.05
+        },
+        {
+          "light_z": 34,
+          "light_n": 50,
+          "heavy_z": 56,
+          "heavy_n": 91,
+          "neutrons": 2,
+          "yield": 0.042
+        },
+        {
+          "light_z": 40,
+          "light_n": 58,
+          "heavy_z": 50,
+          "heavy_n": 83,
+          "neutrons": 2,
+          "yield": 0.04
+        },
+        {
+          "light_z": 37,
+          "light_n": 55,
+          "heavy_z": 53,
+          "heavy_n": 86,
+          "neutrons": 2,
+          "yield": 0.038
+        },
+        {
+          "light_z": 35,
+          "light_n": 51,
+          "heavy_z": 55,
+          "heavy_n": 90,
+          "neutrons": 2,
+          "yield": 0.03
+        },
+        {
+          "light_z": 39,
+          "light_n": 57,
+          "heavy_z": 51,
+          "heavy_n": 84,
+          "neutrons": 2,
+          "yield": 0.028
+        }
+      ]
+    },
+    "94_146": {
+      "z": 94,
+      "n": 146,
+      "a": 240,
+      "energy": "fast",
+      "avg_neutrons": 2.8,
+      "product_pairs": [
+        {
+          "light_z": 42,
+          "light_n": 62,
+          "heavy_z": 52,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.058
+        },
+        {
+          "light_z": 40,
+          "light_n": 60,
+          "heavy_z": 54,
+          "heavy_n": 84,
+          "neutrons": 3,
+          "yield": 0.054
+        },
+        {
+          "light_z": 38,
+          "light_n": 58,
+          "heavy_z": 56,
+          "heavy_n": 86,
+          "neutrons": 3,
+          "yield": 0.045
+        },
+        {
+          "light_z": 44,
+          "light_n": 62,
+          "heavy_z": 50,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.04
+        },
+        {
+          "light_z": 36,
+          "light_n": 56,
+          "heavy_z": 58,
+          "heavy_n": 88,
+          "neutrons": 3,
+          "yield": 0.032
+        },
+        {
+          "light_z": 41,
+          "light_n": 61,
+          "heavy_z": 53,
+          "heavy_n": 83,
+          "neutrons": 3,
+          "yield": 0.035
+        },
+        {
+          "light_z": 39,
+          "light_n": 59,
+          "heavy_z": 55,
+          "heavy_n": 85,
+          "neutrons": 3,
+          "yield": 0.03
+        }
+      ]
+    },
+    "96_149": {
+      "z": 96,
+      "n": 149,
+      "a": 245,
+      "energy": "thermal",
+      "avg_neutrons": 3.6,
+      "product_pairs": [
+        {
+          "light_z": 42,
+          "light_n": 63,
+          "heavy_z": 54,
+          "heavy_n": 83,
+          "neutrons": 4,
+          "yield": 0.055
+        },
+        {
+          "light_z": 44,
+          "light_n": 64,
+          "heavy_z": 52,
+          "heavy_n": 82,
+          "neutrons": 4,
+          "yield": 0.05
+        },
+        {
+          "light_z": 40,
+          "light_n": 61,
+          "heavy_z": 56,
+          "heavy_n": 85,
+          "neutrons": 4,
+          "yield": 0.042
+        },
+        {
+          "light_z": 38,
+          "light_n": 59,
+          "heavy_z": 58,
+          "heavy_n": 87,
+          "neutrons": 4,
+          "yield": 0.035
+        },
+        {
+          "light_z": 46,
+          "light_n": 65,
+          "heavy_z": 50,
+          "heavy_n": 81,
+          "neutrons": 4,
+          "yield": 0.03
+        },
+        {
+          "light_z": 43,
+          "light_n": 63,
+          "heavy_z": 53,
+          "heavy_n": 83,
+          "neutrons": 4,
+          "yield": 0.028
+        }
+      ]
+    },
+    "95_146": {
+      "z": 95,
+      "n": 146,
+      "a": 241,
+      "energy": "thermal",
+      "avg_neutrons": 3.22,
+      "product_pairs": [
+        {
+          "light_z": 42,
+          "light_n": 62,
+          "heavy_z": 53,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.057
+        },
+        {
+          "light_z": 40,
+          "light_n": 60,
+          "heavy_z": 55,
+          "heavy_n": 84,
+          "neutrons": 3,
+          "yield": 0.052
+        },
+        {
+          "light_z": 38,
+          "light_n": 58,
+          "heavy_z": 57,
+          "heavy_n": 86,
+          "neutrons": 3,
+          "yield": 0.043
+        },
+        {
+          "light_z": 44,
+          "light_n": 63,
+          "heavy_z": 51,
+          "heavy_n": 81,
+          "neutrons": 3,
+          "yield": 0.038
+        },
+        {
+          "light_z": 36,
+          "light_n": 56,
+          "heavy_z": 59,
+          "heavy_n": 88,
+          "neutrons": 3,
+          "yield": 0.03
+        },
+        {
+          "light_z": 41,
+          "light_n": 61,
+          "heavy_z": 54,
+          "heavy_n": 83,
+          "neutrons": 3,
+          "yield": 0.035
+        }
+      ]
+    },
+    "94_144": {
+      "z": 94,
+      "n": 144,
+      "a": 238,
+      "energy": "thermal",
+      "avg_neutrons": 2.9,
+      "product_pairs": [
+        {
+          "light_z": 42,
+          "light_n": 61,
+          "heavy_z": 52,
+          "heavy_n": 81,
+          "neutrons": 3,
+          "yield": 0.056
+        },
+        {
+          "light_z": 40,
+          "light_n": 59,
+          "heavy_z": 54,
+          "heavy_n": 83,
+          "neutrons": 3,
+          "yield": 0.051
+        },
+        {
+          "light_z": 38,
+          "light_n": 57,
+          "heavy_z": 56,
+          "heavy_n": 85,
+          "neutrons": 3,
+          "yield": 0.044
+        },
+        {
+          "light_z": 44,
+          "light_n": 62,
+          "heavy_z": 50,
+          "heavy_n": 80,
+          "neutrons": 3,
+          "yield": 0.038
+        },
+        {
+          "light_z": 36,
+          "light_n": 55,
+          "heavy_z": 58,
+          "heavy_n": 87,
+          "neutrons": 3,
+          "yield": 0.032
+        },
+        {
+          "light_z": 39,
+          "light_n": 58,
+          "heavy_z": 55,
+          "heavy_n": 84,
+          "neutrons": 3,
+          "yield": 0.03
+        }
+      ]
+    },
+    "96_148": {
+      "z": 96,
+      "n": 148,
+      "a": 244,
+      "energy": "thermal",
+      "avg_neutrons": 2.69,
+      "product_pairs": [
+        {
+          "light_z": 42,
+          "light_n": 63,
+          "heavy_z": 54,
+          "heavy_n": 83,
+          "neutrons": 3,
+          "yield": 0.052
+        },
+        {
+          "light_z": 44,
+          "light_n": 63,
+          "heavy_z": 52,
+          "heavy_n": 83,
+          "neutrons": 3,
+          "yield": 0.048
+        },
+        {
+          "light_z": 40,
+          "light_n": 61,
+          "heavy_z": 56,
+          "heavy_n": 85,
+          "neutrons": 3,
+          "yield": 0.04
+        },
+        {
+          "light_z": 38,
+          "light_n": 59,
+          "heavy_z": 58,
+          "heavy_n": 87,
+          "neutrons": 3,
+          "yield": 0.034
+        },
+        {
+          "light_z": 46,
+          "light_n": 64,
+          "heavy_z": 50,
+          "heavy_n": 82,
+          "neutrons": 3,
+          "yield": 0.028
+        }
+      ]
+    }
+  }
+}

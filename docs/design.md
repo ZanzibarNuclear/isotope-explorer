@@ -48,15 +48,15 @@ The distinction affects which outcomes are possible and their probabilities.
 After the target nucleus absorbs a neutron, several things can happen depending
 on the isotope and neutron energy:
 
-| Outcome            | Description                                       |
-|--------------------|---------------------------------------------------|
-| Stable             | New isotope is stable. Chain ends.                |
-| Fission            | Nucleus splits into lighter fragments + neutrons. |
-| Beta-minus decay   | Neutron -> proton + electron + antineutrino.      |
-| Beta-plus decay    | Proton -> neutron + positron + neutrino.          |
-| Alpha decay        | Emits He-4 nucleus (Z-2, N-2).                   |
-| Gamma emission     | Excited nucleus emits a photon (no Z/N change).   |
-| Neutron emission   | Nucleus ejects a neutron (back to original Z, N). |
+| Outcome          | Description                                       |
+| ---------------- | ------------------------------------------------- |
+| Stable           | New isotope is stable. Chain ends.                |
+| Fission          | Nucleus splits into lighter fragments + neutrons. |
+| Beta-minus decay | Neutron -> proton + electron + antineutrino.      |
+| Beta-plus decay  | Proton -> neutron + positron + neutrino.          |
+| Alpha decay      | Emits He-4 nucleus (Z-2, N-2).                    |
+| Gamma emission   | Excited nucleus emits a photon (no Z/N change).   |
+| Neutron emission | Nucleus ejects a neutron (back to original Z, N). |
 
 For the first version we focus on: stable, fission, beta-minus, beta-plus, and
 alpha decay. Gamma emission and neutron emission can be added later.
@@ -107,6 +107,7 @@ and user-friendly source for nuclear data. Covers 4,000+ isotopes including
 nuclear structure, decay properties, and radiation types.
 
 **Key for us:**
+
 - Decay modes, branching ratios, half-lives, daughter products
 - Nuclear structure (spin, parity, excitation states)
 - The LiveChart Data Download API allows programmatic CSV retrieval -- ideal
@@ -121,6 +122,7 @@ The National Institute of Standards and Technology is the authoritative U.S.
 source for precise atomic weights and isotopic compositions of stable isotopes.
 
 **Key for us:**
+
 - Standardized relative atomic masses (defining the "ground state" starting
   point of our model)
 - Natural isotopic abundances
@@ -203,16 +205,16 @@ Repository: https://github.com/openmc-dev/openmc
 
 ### How the sources combine
 
-| Need                        | IAEA | NIST | NNDC/ENSDF | ENDF | mendeleev | rd   | OpenMC |
-|-----------------------------|------|------|------------|------|-----------|------|--------|
-| Element properties          | --   | Yes  | --         | --   | Yes       | --   | --     |
-| Isotope mass / abundance    | Yes  | Yes  | Yes        | --   | Yes       | --   | --     |
-| Stability                   | Yes  | --   | Yes        | --   | Yes       | Yes  | --     |
-| Decay modes + branching     | Yes  | --   | Yes        | --   | --        | Yes  | --     |
-| Daughter products           | Yes  | --   | Yes        | --   | --        | Yes  | --     |
-| Neutron cross-sections      | --   | --   | --         | Yes  | --        | --   | Yes    |
-| Fission probability         | --   | --   | --         | Yes  | --        | --   | Yes    |
-| Fission product yields      | --   | --   | --         | Yes  | --        | --   | Yes    |
+| Need                     | IAEA | NIST | NNDC/ENSDF | ENDF | mendeleev | rd  | OpenMC |
+| ------------------------ | ---- | ---- | ---------- | ---- | --------- | --- | ------ |
+| Element properties       | --   | Yes  | --         | --   | Yes       | --  | --     |
+| Isotope mass / abundance | Yes  | Yes  | Yes        | --   | Yes       | --  | --     |
+| Stability                | Yes  | --   | Yes        | --   | Yes       | Yes | --     |
+| Decay modes + branching  | Yes  | --   | Yes        | --   | --        | Yes | --     |
+| Daughter products        | Yes  | --   | Yes        | --   | --        | Yes | --     |
+| Neutron cross-sections   | --   | --   | --         | Yes  | --        | --  | Yes    |
+| Fission probability      | --   | --   | --         | Yes  | --        | --  | Yes    |
+| Fission product yields   | --   | --   | --         | Yes  | --        | --  | Yes    |
 
 (rd = radioactivedecay)
 
@@ -258,6 +260,7 @@ fission products, and elements users are likely to try. Provide graceful
 ### Viewport Visualization
 
 Start simple and iterate:
+
 - Phase 1: Stylized circle representing the nucleus, with Z/N displayed.
   Animate the neutron approaching and being absorbed. Show fission as the
   circle splitting.
@@ -291,11 +294,3 @@ Handles all presentation and user interaction:
 - UI controls (isotope picker, neutron buttons, step navigator)
 - Viewport rendering (canvas/WebGL nucleus visualization)
 - Responsive layout
-
-## Non-Goals (for now)
-
-- Accurate energy accounting (binding energy, kinetic energy of products)
-- Neutron chain reactions (multiple simultaneous fissions)
-- Time-based simulation (real-time decay)
-- Multiplayer or social features
-- Mobile-native apps

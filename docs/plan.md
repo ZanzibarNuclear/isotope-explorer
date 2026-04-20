@@ -54,24 +54,65 @@ speed, migrate to Path B (direct parsing) as needed.
      the dataset (or flagged as needing addition)
    - Generate a Rust source file or JSON blob for embedding in the binary
 
-**Path B -- Direct database access (future)**
+**Path B -- Direct authoritative sources (replaces Path A)**
 
-5. **IAEA LiveChart API**
-   - Use the LiveChart Data Download API to pull CSV data directly
-   - Covers 4,000+ isotopes: decay modes, branching ratios, half-lives,
-     nuclear structure
-   - Can replace or supplement mendeleev + radioactivedecay extraction
-   - Advantage: single authoritative source, no Python library dependency
+Path B eliminates the mendeleev and radioactivedecay Python library
+dependencies by fetching data directly from authoritative sources. The
+extraction scripts still use Python (for HTTP requests and CSV/text
+parsing) but have no specialized nuclear-data library dependencies.
 
-6. **Rust ENSDF parser**
-   - ENSDF is a standard text-based format for nuclear structure data
-   - Write a Rust parser to load local ENSDF data files directly
-   - Allows offline operation with no API or Python dependency
-   - Could become a standalone Rust crate for the community
+5. **IAEA LiveChart API → decay data + nuclear structure**
+   - GET `https://www-nds.iaea.org/relnsd/v1/data?fields=ground_states&nuclides=all`
+   - Returns CSV with ~3,500 ground-state nuclides
+   - Provides: Z, N, half-life (seconds), decay modes with branching
+     fractions, spin, parity
+   - Replaces both mendeleev (isotope properties) and radioactivedecay
+     (ICRP-107 decay chains) with a single authoritative source
+   - Script: `scripts/pathb/fetch_iaea_decays.py`
 
-7. **NIST data for precision masses**
-   - Pull atomic weights and isotopic compositions from NIST
-   - Use as the authoritative source for stable isotope starting points
+6. **NIST Atomic Weights (not needed)**
+   - The IAEA LiveChart API already provides atomic mass (in micro-AMU)
+     and natural abundance for 3,356 of 3,383 nuclides
+   - No separate NIST fetch required; this fixes the `atomic_mass` null
+     bug from Path A without an additional data source
+
+7. **Curated ENDF/B-VIII.0 thermal cross-sections**
+   - Expand the existing 17 hand-curated isotopes to ~80-100 using
+     published ENDF/B-VIII.0 reference tables
+   - Provides: sigma_capture, sigma_fission, sigma_elastic,
+     sigma_absorption, nu_bar at thermal energy (0.0253 eV)
+   - Coverage: actinides (~10), structural/moderator materials (~15),
+     neutron poisons (~10), important fission products (~50+)
+   - Full ENDF-6 cross-section parsing (MF=3) is not worth the
+     complexity -- point values at thermal energy are sufficient for
+     our simulation's fission-vs-capture decisions
+   - Script: `scripts/pathb/build_thermal_xs.py`
+
+8. **ENDF/B-VIII.0 fission yield sublibrary**
+   - Download and parse the neutron-induced fission yield (nfy) files
+     from NNDC for ~40 fissile parents
+   - The fission yield sublibrary (MF=8, MT=454) uses a simple flat
+     record format -- much simpler than full ENDF-6 cross-sections
+   - For each parent: extract top 10-15 product pairs (covers >80%
+     of total yield) at thermal and fast energies
+   - Expands from current 4 fissile parents to all ~40 in ENDF/B-VIII.0
+   - Script: `scripts/pathb/parse_fission_yields.py`
+
+9. **Merge and validate**
+   - Combine all four outputs into `crates/nuclear-sim/data/nuclide_data.json`
+   - Include ALL ~3,500 nuclides (decay data, masses, stability)
+   - Add cross-sections for ~80-100, fission yields for ~40 parents
+   - Validate: decay chain completeness, branching fraction sums,
+     fission mass conservation, regression against current 746 nuclides
+   - Estimated size: ~750 KB JSON, ~150-200 KB gzipped in WASM binary
+   - Script: `scripts/pathb/merge_pathb.py`
+
+**Rust ENSDF parser (deferred)**
+
+Building a Rust parser for ENSDF files could become a useful standalone
+crate, but is not needed now. The IAEA LiveChart API provides the same
+data (it's backed by ENSDF) in an easier-to-consume format. Revisit if
+we need offline-only operation or sub-second data refresh.
 
 ### Phase 2: Nuclear Data and Simulation Engine (Rust)
 
@@ -197,27 +238,27 @@ The visual centerpiece. Can be developed incrementally.
    - Mobile-friendly layout adjustments
    - Loading states, error handling
 
+## Resolved Decisions
+
+- **Data source strategy**: Path B (direct authoritative sources) replaces
+  Path A. IAEA LiveChart API for decay data, NIST for masses, curated
+  ENDF/B-VIII.0 values for cross-sections, ENDF nfy sublibrary for fission
+  yields. Python scripts remain for extraction but have no specialized
+  nuclear-data library dependencies.
+- **ENDF extraction complexity**: We do NOT parse full ENDF-6 cross-section
+  files (MF=3). Thermal point values are curated from published reference
+  tables (~80-100 isotopes). We DO parse the fission yield sublibrary
+  (MF=8, MT=454) which has a much simpler flat-list format.
+- **Rust ENSDF parser scope**: Deferred. The IAEA LiveChart API provides the
+  same data in an easier format. Revisit only if offline operation is needed.
+- **Dataset size vs. WASM binary size**: ~3,500 nuclides with all fields
+  estimates to ~750 KB JSON, ~150-200 KB gzipped. Well within budget for a
+  WASM binary. No compression or lazy-loading needed.
+- **Fission product model**: Top 10-15 product pairs per fissile parent
+  (covers >80% of yield). Probabilistic selection from these pairs.
+
 ## Open Questions
 
-These will be resolved as we go:
-
-- **Data source strategy**: Start with Python library extraction (Path A) for
-  speed. Evaluate whether the IAEA LiveChart API or a Rust ENSDF parser
-  (Path B) should replace it. The IAEA API may be the sweet spot -- single
-  source, CSV output, no Python dependency, 4,000+ nuclides.
-- **ENDF extraction complexity**: The ENDF/B format is notoriously gnarly.
-  OpenMC has parsers, but we may want to use its Python API rather than
-  parsing raw ENDF files. The NNDC and NEA/JANIS tools can also export
-  cross-section data in simpler formats. Explore before committing.
-- **Rust ENSDF parser scope**: Building a full ENSDF parser is a significant
-  effort but could become a useful standalone crate. Decide whether this is
-  worth pursuing early or should wait until Path A proves limiting.
-- **Dataset size vs. WASM binary size**: Embedding data for 500+ nuclides
-  with cross-sections could add meaningful size to the WASM binary. May need
-  to benchmark and decide on a compression or lazy-loading strategy.
-- **Fission product model**: Use the full ENDF yield distribution
-  (probabilistic) or simplify to the top few product pairs per fissile
-  isotope? Start simple, expand if needed.
 - **Visualization tech**: Canvas 2D, WebGL, or a library like PixiJS /
   Three.js?
 - **State management**: Vue reactive state sufficient, or use Pinia for more
@@ -226,17 +267,3 @@ These will be resolved as we go:
   Some chains are very long.
 - **Branching UX**: How to present fission branches intuitively? Tree view?
   Tabs? Sequential with "follow fragment A / follow fragment B" choice?
-
-## Suggested First Steps
-
-1. Build the Python extraction script for mendeleev (isotope properties)
-2. Add radioactivedecay extraction (decay modes, branching, daughters)
-3. Explore OpenMC / ENDF data access for cross-sections and fission yields
-4. Merge into a single JSON dataset, validate decay chain completeness
-5. Implement `NuclideData` struct in Rust, load the extracted dataset
-6. Implement decay logic (alpha, beta-minus) and test with known chains
-7. Implement neutron absorption -> fission for U-235 + thermal neutron
-8. Build the step history model with forward/backward navigation
-9. Expose the simulation session via WASM
-10. Wire up the Vue UI: isotope picker, fire button, step navigator
-11. Add basic canvas visualization
