@@ -6,6 +6,25 @@ import QuickPickList from "./components/QuickPickList.vue";
 import ChainView from "./components/ChainView.vue";
 import CardChainView from "./components/CardChainView.vue";
 
+const ELEMENT_NAMES = [
+  "Hydrogen","Helium","Lithium","Beryllium","Boron","Carbon","Nitrogen","Oxygen","Fluorine","Neon",
+  "Sodium","Magnesium","Aluminum","Silicon","Phosphorus","Sulfur","Chlorine","Argon","Potassium","Calcium",
+  "Scandium","Titanium","Vanadium","Chromium","Manganese","Iron","Cobalt","Nickel","Copper","Zinc",
+  "Gallium","Germanium","Arsenic","Selenium","Bromine","Krypton","Rubidium","Strontium","Yttrium","Zirconium",
+  "Niobium","Molybdenum","Technetium","Ruthenium","Rhodium","Palladium","Silver","Cadmium","Indium","Tin",
+  "Antimony","Tellurium","Iodine","Xenon","Cesium","Barium","Lanthanum","Cerium","Praseodymium","Neodymium",
+  "Promethium","Samarium","Europium","Gadolinium","Terbium","Dysprosium","Holmium","Erbium","Thulium","Ytterbium",
+  "Lutetium","Hafnium","Tantalum","Tungsten","Rhenium","Osmium","Iridium","Platinum","Gold","Mercury",
+  "Thallium","Lead","Bismuth","Polonium","Astatine","Radon","Francium","Radium","Actinium","Thorium",
+  "Protactinium","Uranium","Neptunium","Plutonium","Americium","Curium","Berkelium","Californium","Einsteinium","Fermium",
+  "Mendelevium","Nobelium","Lawrencium","Rutherfordium","Dubnium","Seaborgium","Bohrium","Hassium","Meitnerium","Darmstadtium",
+  "Roentgenium","Copernicium","Nihonium","Flerovium","Moscovium","Livermorium","Tennessine","Oganesson",
+];
+
+function elementName(z: number): string {
+  return ELEMENT_NAMES[z - 1] ?? "Unknown";
+}
+
 type PickerView = "table" | "quick";
 const pickerView = ref<PickerView>("quick");
 const pickerOpen = ref(true);
@@ -290,6 +309,7 @@ onMounted(async () => {
           <h2>Highlighted Isotope</h2>
           <div class="detail-card" :class="{ unknown: !simState.current_step.nuclide_in_database }">
             <div class="detail-nuclide">{{ simState.current_step.nuclide.notation }}</div>
+            <div class="detail-element-name">{{ elementName(simState.current_step.nuclide.z) }}</div>
             <div v-if="!simState.current_step.nuclide_in_database" class="detail-unknown">?? No data available for this
               nuclide</div>
             <div class="detail-desc">{{ simState.current_step.description }}</div>
@@ -692,6 +712,12 @@ onMounted(async () => {
 .detail-nuclide {
   font-size: 1.4rem;
   font-weight: 700;
+  margin-bottom: 0.1rem;
+}
+
+.detail-element-name {
+  font-size: 0.85rem;
+  color: #aaa;
   margin-bottom: 0.25rem;
 }
 
