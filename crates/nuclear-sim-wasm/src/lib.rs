@@ -233,7 +233,21 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
 
 fn build_sim_state(sim: &CoreSim, following_heavy: bool) -> SimStateJs {
     let event = sim.current_event().expect("sim should have state");
-    let step = event_to_step(sim.cursor(), event, sim);
+    let mut step = event_to_step(sim.cursor(), event, sim);
+
+    // When the cursor is on the fission event and we're following the light
+    // fragment, override the displayed nuclide to the light fragment so the
+    // highlighted isotope reflects the branch the user is actually on.
+    if !following_heavy {
+        if let SimEvent::Fission { light, .. } = event {
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, light);
+            step.nuclide = NuclideJs::from_nuclide(light);
+            step.nuclide_is_stable = nuclide_is_stable;
+            step.nuclide_in_database = nuclide_in_database;
+            step.nuclide_half_life_s = nuclide_half_life_s;
+        }
+    }
+
     SimStateJs {
         cursor: sim.cursor(),
         step_count: sim.step_count(),
