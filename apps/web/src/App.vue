@@ -27,7 +27,7 @@ interface FissionTails {
   light: StepInfo[];
   heavy: StepInfo[];
 }
-const fissionTails = ref<FissionTails | null>(null);
+const fissionTails = ref<FissionTails | undefined>(undefined);
 
 const canStepBack = computed(() => simState.value && simState.value.cursor > 0);
 const canStepForward = computed(
@@ -41,9 +41,9 @@ function refreshState() {
   simState.value = session.value.state();
   allSteps.value = session.value.all_steps();
   if (stepByStep.value && simState.value?.has_fission_branch) {
-    fissionTails.value = session.value.fission_tails() ?? null;
+    fissionTails.value = session.value.fission_tails() ?? undefined;
   } else {
-    fissionTails.value = null;
+    fissionTails.value = undefined;
   }
 }
 
@@ -63,7 +63,7 @@ function clearIsotope() {
   simState.value = null;
   allSteps.value = [];
   startingIsotope.value = null;
-  fissionTails.value = null;
+  fissionTails.value = undefined;
   pickerOpen.value = true;
 }
 
