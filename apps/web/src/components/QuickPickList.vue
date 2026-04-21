@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { PERIODIC_TABLE } from '../data/periodic-table-layout'
+
+const elementNameByZ = new Map(PERIODIC_TABLE.map(e => [e.z, e.name]))
+function isoTitle(iso: NuclideInfo): string {
+  return `${elementNameByZ.get(iso.z) ?? iso.notation.split('-')[0]}-${iso.a}`
+}
 
 interface NuclideInfo {
   z: number
@@ -96,26 +102,6 @@ function selectIsotope(iso: NuclideInfo) {
 function isSelected(iso: NuclideInfo): boolean {
   return selectedIsotope.value?.z === iso.z && selectedIsotope.value?.n === iso.n
 }
-
-function formatHalfLife(seconds: number | null): string {
-  if (seconds === null) return 'stable'
-  if (seconds < 1e-15) return `${(seconds * 1e18).toFixed(1)} as`
-  if (seconds < 1e-12) return `${(seconds * 1e15).toFixed(1)} fs`
-  if (seconds < 1e-9) return `${(seconds * 1e12).toFixed(1)} ps`
-  if (seconds < 1e-6) return `${(seconds * 1e9).toFixed(1)} ns`
-  if (seconds < 1e-3) return `${(seconds * 1e6).toFixed(1)} \u00b5s`
-  if (seconds < 1) return `${(seconds * 1e3).toFixed(1)} ms`
-  if (seconds < 60) return `${seconds.toFixed(1)} s`
-  if (seconds < 3600) return `${(seconds / 60).toFixed(1)} min`
-  if (seconds < 86400) return `${(seconds / 3600).toFixed(1)} h`
-  if (seconds < 365.25 * 86400) return `${(seconds / 86400).toFixed(1)} d`
-  const years = seconds / (365.25 * 86400)
-  if (years < 1e3) return `${years.toFixed(1)} y`
-  if (years < 1e6) return `${(years / 1e3).toFixed(1)} ky`
-  if (years < 1e9) return `${(years / 1e6).toFixed(1)} My`
-  if (years < 1e12) return `${(years / 1e9).toFixed(2)} Gy`
-  return `${(years / 1e12).toFixed(1)} Ty`
-}
 </script>
 
 <template>
@@ -140,7 +126,7 @@ function formatHalfLife(seconds: number | null): string {
                 radioactive: !iso.is_stable && !iso.is_fissile,
                 selected: isSelected(iso),
               }"
-              :title="`${iso.notation} — ${formatHalfLife(iso.half_life_s)}`"
+              :title="isoTitle(iso)"
               @click="selectIsotope(iso)"
             >
               {{ iso.notation }}

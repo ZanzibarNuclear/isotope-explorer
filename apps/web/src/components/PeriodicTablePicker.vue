@@ -73,6 +73,11 @@ const selectedElementInfo = computed(() => {
   return PERIODIC_TABLE.find(e => e.z === selectedZ.value) ?? null
 })
 
+const elementNameByZ = new Map(PERIODIC_TABLE.map(e => [e.z, e.name]))
+function isoTitle(iso: NuclideInfo): string {
+  return `${elementNameByZ.get(iso.z) ?? iso.notation.split('-')[0]}-${iso.a}`
+}
+
 function selectElement(el: ElementPosition) {
   if (!elementsWithData.value.has(el.z)) return
   selectedZ.value = el.z
@@ -90,26 +95,6 @@ function hasData(z: number): boolean {
 function hasFissile(z: number): boolean {
   const isotopes = isotopesByElement.value.get(z)
   return isotopes?.some(i => i.is_fissile) ?? false
-}
-
-function formatHalfLife(seconds: number | null): string {
-  if (seconds === null) return 'stable'
-  if (seconds < 1e-15) return `${(seconds * 1e18).toFixed(1)} as`
-  if (seconds < 1e-12) return `${(seconds * 1e15).toFixed(1)} fs`
-  if (seconds < 1e-9) return `${(seconds * 1e12).toFixed(1)} ps`
-  if (seconds < 1e-6) return `${(seconds * 1e9).toFixed(1)} ns`
-  if (seconds < 1e-3) return `${(seconds * 1e6).toFixed(1)} \u00b5s`
-  if (seconds < 1) return `${(seconds * 1e3).toFixed(1)} ms`
-  if (seconds < 60) return `${seconds.toFixed(1)} s`
-  if (seconds < 3600) return `${(seconds / 60).toFixed(1)} min`
-  if (seconds < 86400) return `${(seconds / 3600).toFixed(1)} h`
-  if (seconds < 365.25 * 86400) return `${(seconds / 86400).toFixed(1)} d`
-  const years = seconds / (365.25 * 86400)
-  if (years < 1e3) return `${years.toFixed(1)} y`
-  if (years < 1e6) return `${(years / 1e3).toFixed(1)} ky`
-  if (years < 1e9) return `${(years / 1e6).toFixed(1)} My`
-  if (years < 1e12) return `${(years / 1e9).toFixed(2)} Gy`
-  return `${(years / 1e12).toFixed(1)} Ty`
 }
 </script>
 
@@ -169,7 +154,7 @@ function formatHalfLife(seconds: number | null): string {
             radioactive: !iso.is_stable && !iso.is_fissile,
             selected: selectedIsotope?.z === iso.z && selectedIsotope?.n === iso.n,
           }"
-          :title="`${iso.notation}\n${iso.is_stable ? 'Stable' : formatHalfLife(iso.half_life_s)}`"
+          :title="isoTitle(iso)"
           @click="selectIsotope(iso)"
         >
           {{ iso.a }}
