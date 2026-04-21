@@ -1,5 +1,10 @@
 {
-  "name": "isotopic-explorer-web",
+  "name": "isotope-explorer",
+  "version": "1.0.0",
+  "description": "Isotope Explorer",
+  "author": "Dave, Atomic Alchemist",
+  "license": "MIT",
+  "homepage": "https://isotopes.atomicambitions.com/",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,14 +13,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.5.13"
+    "vue": "^3.5.32"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.2.1",
-    "typescript": "~5.7.2",
-    "vite": "^6.0.3",
-    "vite-plugin-top-level-await": "^1.6.0",
+    "@vitejs/plugin-vue": "^6.0.6",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.9",
     "vite-plugin-wasm": "^3.6.0",
-    "vue-tsc": "^2.1.10"
+    "vue-tsc": "^3.2.7"
   }
 }
