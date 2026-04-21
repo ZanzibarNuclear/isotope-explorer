@@ -8,7 +8,7 @@
     "wasm": "wasm-pack build crates/nuclear-sim-wasm --target bundler",
     "dev": "npm run wasm && npm --prefix apps/web run dev",
     "build": "npm run wasm && npm --prefix apps/web run build",
-    "build:cf": "npm --prefix apps/web run build",
+    "build:cf": "npm --prefix apps/web install && npm --prefix apps/web run build",
     "preview": "npm --prefix apps/web run preview"
   }
 }
