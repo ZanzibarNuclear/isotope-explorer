@@ -2,7 +2,8 @@
   "name": "isotopic-explorer",
   "private": true,
   "devDependencies": {
-    "wasm-pack": "^0.14.0"
+    "wasm-pack": "^0.14.0",
+    "wrangler": "^4.84.0"
   },
   "scripts": {
     "wasm": "wasm-pack build crates/nuclear-sim-wasm --target bundler",
