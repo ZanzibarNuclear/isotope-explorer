@@ -1,0 +1,29 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const sim_version: () => [number, number];
+export const __wbg_simsession_free: (a: number, b: number) => void;
+export const simsession_new: () => number;
+export const simsession_presets: (a: number) => any;
+export const simsession_set_isotope: (a: number, b: number, c: number) => [number, number];
+export const simsession_fire_neutron: (a: number, b: number, c: number) => [number, number];
+export const simsession_fire_neutron_step: (a: number, b: number, c: number) => [number, number];
+export const simsession_induce_decay: (a: number) => [number, number];
+export const simsession_induce_decay_chain: (a: number) => [number, number];
+export const simsession_switch_branch: (a: number, b: number, c: number) => [number, number];
+export const simsession_switch_branch_step: (a: number, b: number, c: number) => [number, number];
+export const simsession_step_forward: (a: number) => [number, number];
+export const simsession_step_back: (a: number) => [number, number];
+export const simsession_go_to_step: (a: number, b: number) => [number, number];
+export const simsession_state: (a: number) => any;
+export const simsession_all_steps: (a: number) => any;
+export const simsession_fission_tails: (a: number) => any;
+export const simsession_decay_chain_preview: (a: number, b: number, c: number) => [number, number, number];
+export const simsession_all_nuclide_keys: (a: number) => any;
+export const simsession_lookup: (a: number, b: number, c: number) => any;
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_externrefs: WebAssembly.Table;
+export const __wbindgen_free: (a: number, b: number, c: number) => void;
+export const __externref_table_dealloc: (a: number) => void;
+export const __wbindgen_start: () => void;

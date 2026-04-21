@@ -1,0 +1,18 @@
+{
+  "name": "nuclear-sim-wasm",
+  "type": "module",
+  "description": "WASM bindings for nuclear-sim",
+  "version": "0.3.0",
+  "files": [
+    "nuclear_sim_wasm_bg.wasm",
+    "nuclear_sim_wasm.js",
+    "nuclear_sim_wasm_bg.js",
+    "nuclear_sim_wasm.d.ts"
+  ],
+  "main": "nuclear_sim_wasm.js",
+  "types": "nuclear_sim_wasm.d.ts",
+  "sideEffects": [
+    "./nuclear_sim_wasm.js",
+    "./snippets/*"
+  ]
+}
