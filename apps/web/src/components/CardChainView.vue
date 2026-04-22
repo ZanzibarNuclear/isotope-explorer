@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { StepInfo } from "@wasm/nuclear_sim_wasm.js";
+import type { NuclideInfo, StepInfo } from "@wasm/nuclear_sim_wasm.js";
 
 const props = defineProps<{
   steps: StepInfo[];
@@ -86,6 +86,12 @@ function halfLifeDisplay(step: StepInfo): string {
   if (step.nuclide_is_stable) return HALF_LIFE_INFINITY;
   if (step.nuclide_half_life_s != null) return formatHalfLife(step.nuclide_half_life_s);
   return "\u2014";
+}
+
+function fragHalfLifeDisplay(frag: NuclideInfo): string {
+  if (frag.half_life_s === undefined) return "??";
+  if (frag.half_life_s === null) return HALF_LIFE_INFINITY;
+  return formatHalfLife(frag.half_life_s);
 }
 
 function makeLineItems(steps: StepInfo[], cursor: number, cursorActive: boolean): RenderItem[] {
@@ -302,6 +308,7 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
               >
                 <div class="frag-tag">heavy</div>
                 <div class="card-notation">{{ item.step.detail?.heavy_fragment?.notation }}</div>
+                <div class="card-hl" v-if="item.step.detail?.heavy_fragment">{{ fragHalfLifeDisplay(item.step.detail.heavy_fragment) }}</div>
               </div>
               <div
                 class="frag-card"
@@ -314,6 +321,7 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
               >
                 <div class="frag-tag">light</div>
                 <div class="card-notation">{{ item.step.detail?.light_fragment?.notation }}</div>
+                <div class="card-hl" v-if="item.step.detail?.light_fragment">{{ fragHalfLifeDisplay(item.step.detail.light_fragment) }}</div>
               </div>
             </div>
             <div class="frag-continuation" :class="{ 'is-heavy': item.followedIsHeavy }">
@@ -345,6 +353,7 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
           >
             <div class="frag-tag">heavy</div>
             <div class="card-notation">{{ block.step.detail?.heavy_fragment?.notation }}</div>
+            <div class="card-hl" v-if="block.step.detail?.heavy_fragment">{{ fragHalfLifeDisplay(block.step.detail.heavy_fragment) }}</div>
           </div>
           <div
             class="frag-card"
@@ -357,6 +366,7 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
           >
             <div class="frag-tag">light</div>
             <div class="card-notation">{{ block.step.detail?.light_fragment?.notation }}</div>
+            <div class="card-hl" v-if="block.step.detail?.light_fragment">{{ fragHalfLifeDisplay(block.step.detail.light_fragment) }}</div>
           </div>
         </div>
       </div>

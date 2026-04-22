@@ -35,6 +35,7 @@ declare module "@wasm/nuclear_sim_wasm.js" {
     a: number;
     symbol: string;
     notation: string;
+    half_life_s?: number | null;
   }
 
   export interface StepDetail {

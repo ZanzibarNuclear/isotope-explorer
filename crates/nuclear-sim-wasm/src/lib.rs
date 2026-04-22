@@ -23,6 +23,8 @@ pub struct NuclideJs {
     pub a: u16,
     pub symbol: String,
     pub notation: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub half_life_s: Option<f64>,
 }
 
 impl NuclideJs {
@@ -33,6 +35,19 @@ impl NuclideJs {
             a: nuclide.mass_number(),
             symbol: nuclide.element_symbol().to_string(),
             notation: nuclide.notation(),
+            half_life_s: None,
+        }
+    }
+
+    fn from_nuclide_with_sim(nuclide: &Nuclide, sim: &CoreSim) -> Self {
+        let half_life_s = sim.lookup(nuclide).and_then(|d| d.half_life_s);
+        Self {
+            z: nuclide.z(),
+            n: nuclide.n(),
+            a: nuclide.mass_number(),
+            symbol: nuclide.element_symbol().to_string(),
+            notation: nuclide.notation(),
+            half_life_s,
         }
     }
 }
@@ -177,8 +192,8 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
                 detail: Some(StepDetail {
                     target: None,
                     energy: Some(energy_label.into()),
-                    light_fragment: Some(NuclideJs::from_nuclide(light)),
-                    heavy_fragment: Some(NuclideJs::from_nuclide(heavy)),
+                    light_fragment: Some(NuclideJs::from_nuclide_with_sim(light, sim)),
+                    heavy_fragment: Some(NuclideJs::from_nuclide_with_sim(heavy, sim)),
                     neutrons_released: Some(*neutrons_released),
                     decay_mode: None,
                     parent: Some(NuclideJs::from_nuclide(parent)),
@@ -233,7 +248,21 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
 
 fn build_sim_state(sim: &CoreSim, following_heavy: bool) -> SimStateJs {
     let event = sim.current_event().expect("sim should have state");
-    let step = event_to_step(sim.cursor(), event, sim);
+    let mut step = event_to_step(sim.cursor(), event, sim);
+
+    // When the cursor is on the fission event and we're following the light
+    // fragment, override the displayed nuclide to the light fragment so the
+    // highlighted isotope reflects the branch the user is actually on.
+    if !following_heavy {
+        if let SimEvent::Fission { light, .. } = event {
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, light);
+            step.nuclide = NuclideJs::from_nuclide(light);
+            step.nuclide_is_stable = nuclide_is_stable;
+            step.nuclide_in_database = nuclide_in_database;
+            step.nuclide_half_life_s = nuclide_half_life_s;
+        }
+    }
+
     SimStateJs {
         cursor: sim.cursor(),
         step_count: sim.step_count(),
