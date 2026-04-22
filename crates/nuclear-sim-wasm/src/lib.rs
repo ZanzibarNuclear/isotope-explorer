@@ -23,6 +23,8 @@ pub struct NuclideJs {
     pub a: u16,
     pub symbol: String,
     pub notation: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub half_life_s: Option<f64>,
 }
 
 impl NuclideJs {
@@ -33,6 +35,19 @@ impl NuclideJs {
             a: nuclide.mass_number(),
             symbol: nuclide.element_symbol().to_string(),
             notation: nuclide.notation(),
+            half_life_s: None,
+        }
+    }
+
+    fn from_nuclide_with_sim(nuclide: &Nuclide, sim: &CoreSim) -> Self {
+        let half_life_s = sim.lookup(nuclide).and_then(|d| d.half_life_s);
+        Self {
+            z: nuclide.z(),
+            n: nuclide.n(),
+            a: nuclide.mass_number(),
+            symbol: nuclide.element_symbol().to_string(),
+            notation: nuclide.notation(),
+            half_life_s,
         }
     }
 }
@@ -177,8 +192,8 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
                 detail: Some(StepDetail {
                     target: None,
                     energy: Some(energy_label.into()),
-                    light_fragment: Some(NuclideJs::from_nuclide(light)),
-                    heavy_fragment: Some(NuclideJs::from_nuclide(heavy)),
+                    light_fragment: Some(NuclideJs::from_nuclide_with_sim(light, sim)),
+                    heavy_fragment: Some(NuclideJs::from_nuclide_with_sim(heavy, sim)),
                     neutrons_released: Some(*neutrons_released),
                     decay_mode: None,
                     parent: Some(NuclideJs::from_nuclide(parent)),

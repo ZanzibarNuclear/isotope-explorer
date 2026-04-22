@@ -11,6 +11,7 @@
 
 use crate::data::{DecayMode, FissionProduct, NuclideData, NuclideDatabase, Stability};
 use crate::Nuclide;
+use rand::Rng;
 
 /// Neutron energy regime.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -103,6 +104,7 @@ pub struct Simulation {
     /// they can choose which fragment to follow, which replaces the
     /// continuation from that point.
     fission_branches: Vec<FissionBranch>,
+    rng: rand::rngs::StdRng,
 }
 
 /// Errors that can occur during simulation.
@@ -146,11 +148,26 @@ impl std::error::Error for SimError {}
 impl Simulation {
     /// Create a new simulation with the given database.
     pub fn new(db: NuclideDatabase) -> Self {
+        use rand::SeedableRng;
         Self {
             db,
             steps: Vec::new(),
             cursor: 0,
             fission_branches: Vec::new(),
+            rng: rand::rngs::StdRng::from_entropy(),
+        }
+    }
+
+    /// Create a simulation with a fixed RNG seed (for deterministic tests).
+    #[cfg(test)]
+    pub fn new_seeded(db: NuclideDatabase, seed: u64) -> Self {
+        use rand::SeedableRng;
+        Self {
+            db,
+            steps: Vec::new(),
+            cursor: 0,
+            fission_branches: Vec::new(),
+            rng: rand::rngs::StdRng::seed_from_u64(seed),
         }
     }
 
@@ -203,8 +220,8 @@ impl Simulation {
                 && energy == NeutronEnergy::Slow
                 && !data.fission_products.is_empty()
             {
-                let product = &data.fission_products[0];
-                self.resolve_fission(target, energy, product.clone(), follow_chain);
+                let product = Self::sample_fission_product(&mut self.rng, &data.fission_products);
+                self.resolve_fission(target, energy, product, follow_chain);
                 return Ok(());
             }
         }
@@ -225,6 +242,31 @@ impl Simulation {
             self.resolve_nuclide(compound);
         }
         Ok(())
+    }
+
+    /// Pick a fission product pair using rejection sampling against the real yield fractions.
+    ///
+    /// Our dataset covers only the most common pairs, whose fractions typically sum to ~0.95.
+    /// We draw a uniform value in [0, 1) and retry until it falls within the known sum,
+    /// then select proportionally. This preserves the relative probabilities exactly
+    /// without normalizing away the missing ~5%.
+    fn sample_fission_product(rng: &mut rand::rngs::StdRng, products: &[FissionProduct]) -> FissionProduct {
+        let known_sum: f64 = products.iter().map(|p| p.fraction).sum();
+        loop {
+            let roll: f64 = rng.gen();
+            if roll >= known_sum {
+                continue; // outside known range — retry
+            }
+            let mut acc = 0.0;
+            for product in products {
+                acc += product.fraction;
+                if roll < acc {
+                    return product.clone();
+                }
+            }
+            // Floating-point rounding edge case: return the last product.
+            return products.last().unwrap().clone();
+        }
     }
 
     /// Resolve a fission event.
