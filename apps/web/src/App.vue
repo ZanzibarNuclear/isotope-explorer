@@ -5,6 +5,7 @@ import PeriodicTablePicker from "./components/PeriodicTablePicker.vue";
 import QuickPickList from "./components/QuickPickList.vue";
 import ChainView from "./components/ChainView.vue";
 import CardChainView from "./components/CardChainView.vue";
+import NuclideGraphView from "./components/NuclideGraphView.vue";
 import { PERIODIC_TABLE } from "./data/periodic-table-layout";
 
 const ELEMENT_NAME_BY_Z = new Map(PERIODIC_TABLE.map(e => [e.z, e.name]));
@@ -17,7 +18,7 @@ type PickerView = "table" | "quick";
 const pickerView = ref<PickerView>("quick");
 const pickerOpen = ref(true);
 
-type ChainViewMode = "list" | "cards";
+type ChainViewMode = "list" | "cards" | "graph";
 const chainViewMode = ref<ChainViewMode>("cards");
 
 const stepByStep = ref(true);
@@ -215,15 +216,20 @@ onMounted(async () => {
         <div class="viewport-header">
           <h2 class="panel-title">Action Viewer</h2>
           <div class="chain-view-toggle" v-if="simState">
-            <button class="chain-toggle-btn" @click="chainViewMode = chainViewMode === 'cards' ? 'list' : 'cards'">
-              {{ chainViewMode === 'cards' ? 'View as a list' : 'View as cards' }}
-            </button>
+            <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'cards' }"
+              @click="chainViewMode = 'cards'">Cards</button>
+            <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'list' }"
+              @click="chainViewMode = 'list'">List</button>
+            <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'graph' }"
+              @click="chainViewMode = 'graph'">Graph</button>
           </div>
         </div>
         <div v-if="!simState" class="viewport-placeholder">
           Choose an isotope to begin.
         </div>
         <ChainView v-else-if="chainViewMode === 'list'" :steps="allSteps" :cursor="simState.cursor"
+          @go-to-step="goToStep" />
+        <NuclideGraphView v-else-if="chainViewMode === 'graph'" :steps="allSteps" :cursor="simState.cursor"
           @go-to-step="goToStep" />
         <CardChainView v-else :session="session" :steps="allSteps" :cursor="simState.cursor"
           :following-heavy="simState.following_heavy" :step-by-step="stepByStep" :fission-tails="fissionTails"
