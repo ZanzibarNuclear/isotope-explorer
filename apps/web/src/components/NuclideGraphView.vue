@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { StepInfo } from "@wasm/nuclear_sim_wasm.js";
+import { PERIODIC_TABLE } from "../data/periodic-table-layout";
 
 const props = defineProps<{
   steps: StepInfo[];
@@ -11,8 +12,16 @@ const emit = defineEmits<{
   (e: "go-to-step", index: number): void;
 }>();
 
-const CELL = 64;
-const NODE_R = 24;
+const CELL = 72;
+const NODE_W = 56;
+const NODE_H = 50;
+const NODE_HW = NODE_W / 2;
+const NODE_HH = NODE_H / 2;
+
+const ELEMENT_SYMBOL_BY_Z = new Map(PERIODIC_TABLE.map(e => [e.z, e.symbol]));
+const elementSymbol = (z: number) => ELEMENT_SYMBOL_BY_Z.get(z) ?? "";
+
+const HALF_LIFE_INFINITY = "∞";
 
 function decaySymbol(mode?: string): string {
   switch (mode) {
@@ -34,6 +43,28 @@ function edgeLabel(step: StepInfo): string {
   }
 }
 
+function formatHalfLife(s: number): string {
+  const min = 60, hr = 3600, day = 86400, yr = 365.25 * day;
+  if (s >= yr * 1e9) return `${(s / (yr * 1e9)).toPrecision(3)} Gyr`;
+  if (s >= yr * 1e6) return `${(s / (yr * 1e6)).toPrecision(3)} Myr`;
+  if (s >= yr * 1e3) return `${(s / (yr * 1e3)).toPrecision(3)} kyr`;
+  if (s >= yr) return `${Math.round(s / yr).toLocaleString()} yr`;
+  if (s >= day) return `${(s / day).toFixed(1)} d`;
+  if (s >= hr) return `${(s / hr).toFixed(1)} h`;
+  if (s >= min) return `${(s / min).toFixed(1)} min`;
+  if (s >= 1) return `${s < 100 ? s.toPrecision(3) : Math.round(s).toLocaleString()} s`;
+  return `${s.toPrecision(2)} s`;
+}
+
+function halfLifeDisplay(opts: {
+  unknown: boolean; isStable: boolean; halfLife: number | null | undefined;
+}): string {
+  if (opts.unknown) return "??";
+  if (opts.isStable) return HALF_LIFE_INFINITY;
+  if (typeof opts.halfLife === "number") return formatHalfLife(opts.halfLife);
+  return "—";
+}
+
 interface RawNode {
   z: number;
   n: number;
@@ -42,6 +73,7 @@ interface RawNode {
   isStable: boolean;
   unknown: boolean;
   ghost: boolean;
+  halfLife: number | null | undefined;
 }
 
 interface RawEdge {
@@ -56,29 +88,29 @@ interface RawEdge {
 
 const layout = computed(() => {
   const steps = props.steps;
-  if (steps.length === 0) {
-    return null;
-  }
+  if (steps.length === 0) return null;
 
   const start = steps[0].nuclide;
 
   const nodeMap = new Map<string, RawNode>();
   const edges: RawEdge[] = [];
 
-  function key(z: number, n: number) { return `${z}:${n}`; }
+  const key = (z: number, n: number) => `${z}:${n}`;
 
   function addNode(z: number, n: number, notation: string, opts: {
     index?: number; isStable?: boolean; unknown?: boolean; ghost?: boolean;
+    halfLife?: number | null;
   }) {
     const k = key(z, n);
     const existing = nodeMap.get(k);
     if (existing) {
-      // Prefer non-ghost data and earliest step index for navigation.
+      // Real step data (non-ghost) wins over a placeholder ghost.
       if (existing.ghost && !opts.ghost) {
         existing.ghost = false;
         existing.index = opts.index ?? existing.index;
         existing.isStable = opts.isStable ?? existing.isStable;
         existing.unknown = opts.unknown ?? existing.unknown;
+        existing.halfLife = opts.halfLife;
         existing.notation = notation;
       } else if (existing.index === undefined && opts.index !== undefined) {
         existing.index = opts.index;
@@ -91,6 +123,7 @@ const layout = computed(() => {
       isStable: opts.isStable ?? false,
       unknown: opts.unknown ?? false,
       ghost: opts.ghost ?? false,
+      halfLife: opts.halfLife,
     });
   }
 
@@ -102,6 +135,7 @@ const layout = computed(() => {
       index: step.index,
       isStable: step.nuclide_is_stable,
       unknown: !step.nuclide_in_database,
+      halfLife: step.nuclide_half_life_s,
     });
 
     if (i > 0) {
@@ -126,7 +160,14 @@ const layout = computed(() => {
           !!frag && frag.z === followed.z && frag.n === followed.n;
         const other = isFollowed(heavy) ? light : heavy;
         if (other) {
-          addNode(other.z, other.n, other.notation, { ghost: true });
+          // Fragment half_life_s convention: undefined = unknown, null = stable.
+          const hl = other.half_life_s;
+          addNode(other.z, other.n, other.notation, {
+            ghost: true,
+            unknown: hl === undefined,
+            isStable: hl === null,
+            halfLife: typeof hl === "number" ? hl : undefined,
+          });
           edges.push({
             fromZ: prev.nuclide.z, fromN: prev.nuclide.n,
             toZ: other.z, toN: other.n,
@@ -141,19 +182,17 @@ const layout = computed(() => {
 
   const nodes = Array.from(nodeMap.values());
 
-  // Symmetric extent around the starting isotope.
-  let radZ = 1, radN = 1;
+  // Tight bbox + 1 cell padding on each side.
+  let minZ = start.z, maxZ = start.z, minN = start.n, maxN = start.n;
   for (const node of nodes) {
-    radZ = Math.max(radZ, Math.abs(node.z - start.z));
-    radN = Math.max(radN, Math.abs(node.n - start.n));
+    if (node.z < minZ) minZ = node.z;
+    if (node.z > maxZ) maxZ = node.z;
+    if (node.n < minN) minN = node.n;
+    if (node.n > maxN) maxN = node.n;
   }
-  radZ += 1;
-  radN += 1;
-
-  const minZ = start.z - radZ;
-  const maxZ = start.z + radZ;
-  const minN = start.n - radN;
-  const maxN = start.n + radN;
+  const dataMinZ = minZ, dataMaxZ = maxZ, dataMinN = minN, dataMaxN = maxN;
+  minZ -= 1; maxZ += 1;
+  minN -= 1; maxN += 1;
 
   const cols = maxN - minN + 1;
   const rows = maxZ - minZ + 1;
@@ -172,7 +211,16 @@ const layout = computed(() => {
     isStart: node.z === start.z && node.n === start.n,
     x: nodeX(node.n),
     y: nodeY(node.z),
+    halfLifeText: halfLifeDisplay(node),
   }));
+
+  // Clip a ray from a rect's center to its boundary along (ux, uy).
+  function rectClip(ux: number, uy: number) {
+    const ax = Math.abs(ux), ay = Math.abs(uy);
+    const tx = ax > 0 ? NODE_HW / ax : Infinity;
+    const ty = ay > 0 ? NODE_HH / ay : Infinity;
+    return Math.min(tx, ty);
+  }
 
   const placedEdges = edges.flatMap(e => {
     const x1 = nodeX(e.fromN), y1 = nodeY(e.fromZ);
@@ -181,30 +229,34 @@ const layout = computed(() => {
     const len = Math.hypot(dx, dy);
     if (len === 0) return [];
     const ux = dx / len, uy = dy / len;
+    const t = rectClip(ux, uy);
     return [{
       ...e,
-      x1: x1 + ux * NODE_R,
-      y1: y1 + uy * NODE_R,
-      x2: x2 - ux * NODE_R,
-      y2: y2 - uy * NODE_R,
+      x1: x1 + ux * t,
+      y1: y1 + uy * t,
+      x2: x2 - ux * t,
+      y2: y2 - uy * t,
       midX: (x1 + x2) / 2,
       midY: (y1 + y2) / 2,
     }];
   });
 
-  // Axis tick positions (every cell).
+  // Axis ticks only for the actual data range (not the padding cells).
   const nTicks: { n: number; x: number }[] = [];
-  for (let n = minN; n <= maxN; n++) nTicks.push({ n, x: nodeX(n) });
-  const zTicks: { z: number; y: number }[] = [];
-  for (let z = minZ; z <= maxZ; z++) zTicks.push({ z, y: nodeY(z) });
+  for (let n = dataMinN; n <= dataMaxN; n++) nTicks.push({ n, x: nodeX(n) });
+  const zTicks: { z: number; y: number; symbol: string }[] = [];
+  for (let z = dataMinZ; z <= dataMaxZ; z++) zTicks.push({ z, y: nodeY(z), symbol: elementSymbol(z) });
 
   return {
     nodes: placedNodes,
     edges: placedEdges,
-    width,
-    height,
+    width, height,
     viewBox: `0 0 ${width} ${height}`,
     cellSize: CELL,
+    nodeW: NODE_W,
+    nodeH: NODE_H,
+    nodeHW: NODE_HW,
+    nodeHH: NODE_HH,
     bounds: { minN, maxN, minZ, maxZ },
     nTicks,
     zTicks,
@@ -250,9 +302,14 @@ function onNodeClick(node: { index?: number }) {
 
         <g class="ticks">
           <text v-for="(t, i) in layout.nTicks" :key="'nt'+i"
-            :x="t.x" :y="layout.height - 4" class="tick-label" text-anchor="middle">{{ t.n }}</text>
+            :x="t.x" :y="layout.height - layout.cellSize / 2 + 4"
+            class="tick-label tick-n" text-anchor="middle">{{ t.n }}</text>
           <text v-for="(t, i) in layout.zTicks" :key="'zt'+i"
-            :x="4" :y="t.y" class="tick-label" dominant-baseline="middle">{{ t.z }}</text>
+            :x="layout.cellSize / 2" :y="t.y - 6"
+            class="tick-label tick-z-symbol" text-anchor="middle">{{ t.symbol }}</text>
+          <text v-for="(t, i) in layout.zTicks" :key="'zn'+i"
+            :x="layout.cellSize / 2" :y="t.y + 8"
+            class="tick-label tick-z-number" text-anchor="middle">{{ t.z }}</text>
         </g>
 
         <g class="edges">
@@ -278,8 +335,11 @@ function onNodeClick(node: { index?: number }) {
             }"
             :transform="`translate(${node.x}, ${node.y})`"
             @click="onNodeClick(node)">
-            <circle :r="24" />
-            <text class="node-label" text-anchor="middle" dy="0.35em">{{ node.notation }}</text>
+            <rect :x="-layout.nodeHW" :y="-layout.nodeHH"
+              :width="layout.nodeW" :height="layout.nodeH"
+              rx="5" ry="5" />
+            <text class="node-notation" text-anchor="middle" y="-2">{{ node.notation }}</text>
+            <text class="node-halflife" text-anchor="middle" y="13">{{ node.halfLifeText }}</text>
           </g>
         </g>
       </svg>
@@ -321,11 +381,17 @@ function onNodeClick(node: { index?: number }) {
 }
 
 .ticks .tick-label {
-  fill: #484f58;
-  font-size: 9px;
   font-family: ui-monospace, monospace;
   pointer-events: none;
+  fill: #484f58;
 }
+.tick-n { font-size: 9px; }
+.tick-z-symbol {
+  font-size: 11px;
+  font-weight: 700;
+  fill: #6e7681;
+}
+.tick-z-number { font-size: 9px; }
 
 .edge line {
   stroke: #8b949e;
@@ -352,48 +418,49 @@ function onNodeClick(node: { index?: number }) {
 }
 .edge.fission .edge-label { fill: #f0883e; }
 
-.node circle {
+.node rect {
   fill: #21262d;
   stroke: #30363d;
   stroke-width: 1.5;
   transition: stroke 0.12s, fill 0.12s;
 }
 .node.clickable { cursor: pointer; }
-.node.clickable:hover circle {
-  stroke: #58a6ff;
-}
-.node.active circle {
+.node.clickable:hover rect { stroke: #58a6ff; }
+.node.active rect {
   fill: #1f6feb33;
   stroke: #58a6ff;
   stroke-width: 2.5;
 }
-.node.stable circle {
-  stroke: #3fb950;
-}
-.node.stable.active circle {
-  fill: #3fb95022;
-}
-.node.unknown circle {
+.node.stable rect { stroke: #3fb950; }
+.node.stable.active rect { fill: #3fb95022; }
+.node.unknown rect {
   stroke: #d29922;
   stroke-dasharray: 3 2;
 }
-.node.ghost circle {
+.node.ghost rect {
   stroke: #484f58;
   fill: #161b22;
   stroke-dasharray: 3 2;
 }
-.node.start circle {
-  stroke-width: 2;
-}
-.node.start:not(.active) circle {
-  stroke: #58a6ff80;
-}
-.node-label {
+.node.start rect { stroke-width: 2; }
+.node.start:not(.active):not(.stable) rect { stroke: #58a6ff80; }
+
+.node-notation {
   fill: #e6edf3;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   font-family: ui-sans-serif, system-ui;
   pointer-events: none;
 }
-.node.ghost .node-label { fill: #6e7681; font-weight: 600; }
+.node-halflife {
+  fill: #8b949e;
+  font-size: 9px;
+  font-family: ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.node.stable .node-halflife { fill: #3fb95099; }
+.node.unknown .node-halflife { fill: #d29922; }
+.node.ghost .node-notation { fill: #6e7681; font-weight: 600; }
+.node.ghost .node-halflife { fill: #484f58; }
 </style>
