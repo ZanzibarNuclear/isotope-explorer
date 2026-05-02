@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import type { StepInfo } from "@wasm/nuclear_sim_wasm.js";
 import { PERIODIC_TABLE } from "../data/periodic-table-layout";
 
@@ -17,6 +17,13 @@ const NODE_W = 56;
 const NODE_H = 50;
 const NODE_HW = NODE_W / 2;
 const NODE_HH = NODE_H / 2;
+const VIEW_COLS = 7;
+const VIEW_ROWS = 5;
+const ZOOM_LEVELS = [1, 0.75, 0.5] as const;
+
+type ZoomLevel = typeof ZOOM_LEVELS[number];
+
+const zoomLevel = ref<ZoomLevel>(1);
 
 const ELEMENT_SYMBOL_BY_Z = new Map(PERIODIC_TABLE.map(e => [e.z, e.symbol]));
 const elementSymbol = (z: number) => ELEMENT_SYMBOL_BY_Z.get(z) ?? "";
@@ -84,6 +91,20 @@ interface RawEdge {
   label: string;
   kind: "neutron" | "decay" | "fission";
   ghost: boolean;
+}
+
+function centeredAxisBounds(value: number, visibleCells: number) {
+  let min = value - Math.floor(visibleCells / 2);
+  let max = min + visibleCells - 1;
+  if (min < 0) {
+    max -= min;
+    min = 0;
+  }
+  return { min, max };
+}
+
+function zoomLabel(level: ZoomLevel): string {
+  return `${Math.round(level * 100)}%`;
 }
 
 const layout = computed(() => {
@@ -182,17 +203,22 @@ const layout = computed(() => {
 
   const nodes = Array.from(nodeMap.values());
 
-  // Tight bbox + 1 cell padding on each side.
-  let minZ = start.z, maxZ = start.z, minN = start.n, maxN = start.n;
+  let dataMinZ = start.z, dataMaxZ = start.z, dataMinN = start.n, dataMaxN = start.n;
   for (const node of nodes) {
-    if (node.z < minZ) minZ = node.z;
-    if (node.z > maxZ) maxZ = node.z;
-    if (node.n < minN) minN = node.n;
-    if (node.n > maxN) maxN = node.n;
+    if (node.z < dataMinZ) dataMinZ = node.z;
+    if (node.z > dataMaxZ) dataMaxZ = node.z;
+    if (node.n < dataMinN) dataMinN = node.n;
+    if (node.n > dataMaxN) dataMaxN = node.n;
   }
-  const dataMinZ = minZ, dataMaxZ = maxZ, dataMinN = minN, dataMaxN = maxN;
-  minZ -= 1; maxZ += 1;
-  minN -= 1; maxN += 1;
+
+  const cursorStep = steps[props.cursor] ?? steps[0];
+  const activeNuclide = cursorStep.nuclide;
+  const viewCols = Math.round(VIEW_COLS / zoomLevel.value);
+  const viewRows = Math.round(VIEW_ROWS / zoomLevel.value);
+  const nBounds = centeredAxisBounds(activeNuclide.n, viewCols);
+  const zBounds = centeredAxisBounds(activeNuclide.z, viewRows);
+  const minN = nBounds.min, maxN = nBounds.max;
+  const minZ = zBounds.min, maxZ = zBounds.max;
 
   const cols = maxN - minN + 1;
   const rows = maxZ - minZ + 1;
@@ -202,7 +228,6 @@ const layout = computed(() => {
   const nodeX = (n: number) => (n - minN) * CELL + CELL / 2;
   const nodeY = (z: number) => (maxZ - z) * CELL + CELL / 2;
 
-  const cursorStep = steps[props.cursor];
   const activeKey = cursorStep ? key(cursorStep.nuclide.z, cursorStep.nuclide.n) : null;
 
   const placedNodes = nodes.map(node => ({
@@ -236,16 +261,24 @@ const layout = computed(() => {
       y1: y1 + uy * t,
       x2: x2 - ux * t,
       y2: y2 - uy * t,
-      midX: (x1 + x2) / 2,
-      midY: (y1 + y2) / 2,
+      midX: (x1 + ux * t + x2 - ux * t) / 2,
+      midY: (y1 + uy * t + y2 - uy * t) / 2,
     }];
   });
 
-  // Axis ticks only for the actual data range (not the padding cells).
+  // Ticks cover the active viewport so low-Z/low-N cases visibly anchor at
+  // the lower-left origin while normal cases stay centered on the active node.
+  const hasOriginCell = minN === 0 && minZ === 0;
   const nTicks: { n: number; x: number }[] = [];
-  for (let n = dataMinN; n <= dataMaxN; n++) nTicks.push({ n, x: nodeX(n) });
+  for (let n = minN; n <= maxN; n++) {
+    nTicks.push({ n, x: nodeX(n) });
+  }
   const zTicks: { z: number; y: number; symbol: string }[] = [];
-  for (let z = dataMinZ; z <= dataMaxZ; z++) zTicks.push({ z, y: nodeY(z), symbol: elementSymbol(z) });
+  for (let z = minZ; z <= maxZ; z++) {
+    zTicks.push({ z, y: nodeY(z), symbol: elementSymbol(z) });
+  }
+  const nLabelTicks = hasOriginCell ? nTicks.filter(t => t.n !== 0) : nTicks;
+  const zLabelTicks = hasOriginCell ? zTicks.filter(t => t.z !== 0) : zTicks;
 
   return {
     nodes: placedNodes,
@@ -257,9 +290,16 @@ const layout = computed(() => {
     nodeH: NODE_H,
     nodeHW: NODE_HW,
     nodeHH: NODE_HH,
-    bounds: { minN, maxN, minZ, maxZ },
+    bounds: { minN, maxN, minZ, maxZ, dataMinN, dataMaxN, dataMinZ, dataMaxZ },
+    zoomLevel: zoomLevel.value,
+    origin: {
+      x: minN === 0 ? 0 : null,
+      y: minZ === 0 ? height : null,
+    },
     nTicks,
     zTicks,
+    nLabelTicks,
+    zLabelTicks,
   };
 });
 
@@ -275,8 +315,21 @@ function onNodeClick(node: { index?: number }) {
       <span class="axis-sep">&middot;</span>
       <span class="axis-label">N (neutrons) &rarr;</span>
     </div>
-    <div class="graph-scroll" v-if="layout">
-      <svg class="graph" :width="layout.width" :height="layout.height" :viewBox="layout.viewBox">
+    <div class="graph-frame" v-if="layout">
+      <div class="zoom-control" aria-label="Graph zoom">
+        <button
+          v-for="level in ZOOM_LEVELS"
+          :key="level"
+          type="button"
+          class="zoom-btn"
+          :class="{ active: zoomLevel === level }"
+          :aria-pressed="zoomLevel === level"
+          @click="zoomLevel = level"
+        >
+          {{ zoomLabel(level) }}
+        </button>
+      </div>
+      <svg class="graph" :viewBox="layout.viewBox" preserveAspectRatio="xMidYMid meet">
         <defs>
           <marker id="ng-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e" />
@@ -298,16 +351,20 @@ function onNodeClick(node: { index?: number }) {
             :x1="0" :y1="t.y - layout.cellSize / 2"
             :x2="layout.width" :y2="t.y - layout.cellSize / 2" />
           <line :x1="0" :y1="layout.height" :x2="layout.width" :y2="layout.height" />
+          <line v-if="layout.origin.x !== null" class="axis-line"
+            :x1="layout.origin.x" :y1="0" :x2="layout.origin.x" :y2="layout.height" />
+          <line v-if="layout.origin.y !== null" class="axis-line"
+            :x1="0" :y1="layout.origin.y" :x2="layout.width" :y2="layout.origin.y" />
         </g>
 
         <g class="ticks">
-          <text v-for="(t, i) in layout.nTicks" :key="'nt'+i"
+          <text v-for="(t, i) in layout.nLabelTicks" :key="'nt'+i"
             :x="t.x" :y="layout.height - layout.cellSize / 2 + 4"
             class="tick-label tick-n" text-anchor="middle">{{ t.n }}</text>
-          <text v-for="(t, i) in layout.zTicks" :key="'zt'+i"
+          <text v-for="(t, i) in layout.zLabelTicks" :key="'zt'+i"
             :x="layout.cellSize / 2" :y="t.y - 6"
             class="tick-label tick-z-symbol" text-anchor="middle">{{ t.symbol }}</text>
-          <text v-for="(t, i) in layout.zTicks" :key="'zn'+i"
+          <text v-for="(t, i) in layout.zLabelTicks" :key="'zn'+i"
             :x="layout.cellSize / 2" :y="t.y + 8"
             class="tick-label tick-z-number" text-anchor="middle">{{ t.z }}</text>
         </g>
@@ -318,7 +375,7 @@ function onNodeClick(node: { index?: number }) {
             <line :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
               :marker-end="edge.ghost ? 'url(#ng-arrow-ghost)' : edge.kind === 'fission' ? 'url(#ng-arrow-fission)' : 'url(#ng-arrow)'" />
             <text v-if="edge.label" :x="edge.midX" :y="edge.midY"
-              class="edge-label" text-anchor="middle" dy="-4">{{ edge.label }}</text>
+              class="edge-label" text-anchor="middle" dominant-baseline="middle">{{ edge.label }}</text>
           </g>
         </g>
 
@@ -365,19 +422,65 @@ function onNodeClick(node: { index?: number }) {
 }
 .axis-sep { color: #30363d; }
 
-.graph-scroll {
-  overflow: auto;
+.graph-frame {
+  position: relative;
+  overflow: hidden;
   border: 1px solid #21262d;
   border-radius: 8px;
   background: #0d1117;
+  display: flex;
   max-width: 100%;
+  height: clamp(340px, calc(100vh - 15rem), 720px);
 }
 
-.graph { display: block; }
+.zoom-control {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 1;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0d1117d9;
+  backdrop-filter: blur(4px);
+}
+
+.zoom-btn {
+  padding: 0.2rem 0.45rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #8b949e;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.zoom-btn:hover {
+  color: #e6edf3;
+  background: #21262d;
+}
+
+.zoom-btn.active {
+  color: #58a6ff;
+  background: #1f6feb33;
+}
+
+.graph {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 
 .grid line {
   stroke: #161b22;
   stroke-width: 1;
+}
+.grid .axis-line {
+  stroke: #30363d;
+  stroke-width: 2;
 }
 
 .ticks .tick-label {

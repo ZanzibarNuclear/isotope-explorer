@@ -66,7 +66,7 @@ function elementName(z: number): string {
       </div>
     </div>
 
-    <div class="section" v-if="!stepByStep && simState && simState.step_count > 1">
+    <div class="section" v-if="simState && simState.step_count > 1">
       <h2>Navigate</h2>
       <div class="nav-row">
         <button class="nav-btn" :disabled="!canStepBack" @click="emit('step-back')">&larr; Back</button>
