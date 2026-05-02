@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import type { StepInfo } from "@wasm/nuclear_sim_wasm.js";
 import { PERIODIC_TABLE } from "../data/periodic-table-layout";
 
@@ -24,6 +24,16 @@ const ZOOM_LEVELS = [1, 0.75, 0.5] as const;
 type ZoomLevel = typeof ZOOM_LEVELS[number];
 
 const zoomLevel = ref<ZoomLevel>(1);
+const panOffset = ref({ x: 0, y: 0 });
+const dragState = ref<{
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startPanX: number;
+  startPanY: number;
+  svgWidth: number;
+  svgHeight: number;
+} | null>(null);
 
 const ELEMENT_SYMBOL_BY_Z = new Map(PERIODIC_TABLE.map(e => [e.z, e.symbol]));
 const elementSymbol = (z: number) => ELEMENT_SYMBOL_BY_Z.get(z) ?? "";
@@ -106,6 +116,17 @@ function centeredAxisBounds(value: number, visibleCells: number) {
 function zoomLabel(level: ZoomLevel): string {
   return `${Math.round(level * 100)}%`;
 }
+
+function recenterGraph() {
+  panOffset.value = { x: 0, y: 0 };
+}
+
+watch(
+  () => [props.cursor, zoomLevel.value] as const,
+  () => {
+    recenterGraph();
+  }
+);
 
 const layout = computed(() => {
   const steps = props.steps;
@@ -266,17 +287,42 @@ const layout = computed(() => {
     }];
   });
 
-  // Ticks cover the active viewport so low-Z/low-N cases visibly anchor at
-  // the lower-left origin while normal cases stay centered on the active node.
-  const hasOriginCell = minN === 0 && minZ === 0;
+  // Grid and labels track the current viewBox, so after manual panning the
+  // axes still describe the area the user is looking at.
+  const viewMinX = panOffset.value.x;
+  const viewMaxX = panOffset.value.x + width;
+  const viewMinY = panOffset.value.y;
+  const viewMaxY = panOffset.value.y + height;
+
+  const firstNBoundary = Math.max(0, minN + Math.floor(viewMinX / CELL));
+  const lastNBoundary = Math.max(firstNBoundary, minN + Math.ceil(viewMaxX / CELL));
+  const vGridLines: { x: number }[] = [];
+  for (let n = firstNBoundary; n <= lastNBoundary; n++) {
+    vGridLines.push({ x: (n - minN) * CELL });
+  }
+
+  const firstZBoundary = Math.max(0, maxZ - Math.ceil(viewMaxY / CELL));
+  const lastZBoundary = Math.max(firstZBoundary, maxZ - Math.floor(viewMinY / CELL));
+  const hGridLines: { y: number }[] = [];
+  for (let z = firstZBoundary; z <= lastZBoundary; z++) {
+    hGridLines.push({ y: (maxZ - z) * CELL });
+  }
+
   const nTicks: { n: number; x: number }[] = [];
-  for (let n = minN; n <= maxN; n++) {
+  const firstNLabel = firstNBoundary;
+  const lastNLabel = Math.max(firstNLabel, lastNBoundary - 1);
+  for (let n = firstNLabel; n <= lastNLabel; n++) {
     nTicks.push({ n, x: nodeX(n) });
   }
+
   const zTicks: { z: number; y: number; symbol: string }[] = [];
-  for (let z = minZ; z <= maxZ; z++) {
+  const firstZLabel = Math.max(0, maxZ - Math.ceil(viewMaxY / CELL) + 1);
+  const lastZLabel = Math.max(firstZLabel, maxZ - Math.floor(viewMinY / CELL));
+  for (let z = firstZLabel; z <= lastZLabel; z++) {
     zTicks.push({ z, y: nodeY(z), symbol: elementSymbol(z) });
   }
+
+  const hasOriginCell = nTicks.some(t => t.n === 0) && zTicks.some(t => t.z === 0);
   const nLabelTicks = hasOriginCell ? nTicks.filter(t => t.n !== 0) : nTicks;
   const zLabelTicks = hasOriginCell ? zTicks.filter(t => t.z !== 0) : zTicks;
 
@@ -284,7 +330,9 @@ const layout = computed(() => {
     nodes: placedNodes,
     edges: placedEdges,
     width, height,
-    viewBox: `0 0 ${width} ${height}`,
+    viewBox: `${panOffset.value.x} ${panOffset.value.y} ${width} ${height}`,
+    viewBoxX: panOffset.value.x,
+    viewBoxY: panOffset.value.y,
     cellSize: CELL,
     nodeW: NODE_W,
     nodeH: NODE_H,
@@ -293,9 +341,11 @@ const layout = computed(() => {
     bounds: { minN, maxN, minZ, maxZ, dataMinN, dataMaxN, dataMinZ, dataMaxZ },
     zoomLevel: zoomLevel.value,
     origin: {
-      x: minN === 0 ? 0 : null,
-      y: minZ === 0 ? height : null,
+      x: -minN * CELL,
+      y: (maxZ + 1) * CELL,
     },
+    vGridLines,
+    hGridLines,
     nTicks,
     zTicks,
     nLabelTicks,
@@ -305,6 +355,43 @@ const layout = computed(() => {
 
 function onNodeClick(node: { index?: number }) {
   if (node.index !== undefined) emit("go-to-step", node.index);
+}
+
+function onGraphPointerDown(event: PointerEvent) {
+  if (!layout.value || event.button !== 0) return;
+  const svg = event.currentTarget as SVGSVGElement;
+  const rect = svg.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
+
+  svg.setPointerCapture(event.pointerId);
+  dragState.value = {
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    startPanX: panOffset.value.x,
+    startPanY: panOffset.value.y,
+    svgWidth: rect.width,
+    svgHeight: rect.height,
+  };
+}
+
+function onGraphPointerMove(event: PointerEvent) {
+  const drag = dragState.value;
+  const currentLayout = layout.value;
+  if (!drag || !currentLayout || drag.pointerId !== event.pointerId) return;
+
+  const dx = ((event.clientX - drag.startClientX) / drag.svgWidth) * currentLayout.width;
+  const dy = ((event.clientY - drag.startClientY) / drag.svgHeight) * currentLayout.height;
+  panOffset.value = {
+    x: drag.startPanX - dx,
+    y: drag.startPanY - dy,
+  };
+}
+
+function onGraphPointerEnd(event: PointerEvent) {
+  if (dragState.value?.pointerId !== event.pointerId) return;
+  (event.currentTarget as SVGSVGElement).releasePointerCapture(event.pointerId);
+  dragState.value = null;
 }
 </script>
 
@@ -318,6 +405,14 @@ function onNodeClick(node: { index?: number }) {
     <div class="graph-frame" v-if="layout">
       <div class="zoom-control" aria-label="Graph zoom">
         <button
+          type="button"
+          class="zoom-btn recenter-btn"
+          :disabled="panOffset.x === 0 && panOffset.y === 0"
+          @click="recenterGraph"
+        >
+          Center
+        </button>
+        <button
           v-for="level in ZOOM_LEVELS"
           :key="level"
           type="button"
@@ -329,7 +424,17 @@ function onNodeClick(node: { index?: number }) {
           {{ zoomLabel(level) }}
         </button>
       </div>
-      <svg class="graph" :viewBox="layout.viewBox" preserveAspectRatio="xMidYMid meet">
+      <svg
+        class="graph"
+        :class="{ panning: dragState }"
+        :viewBox="layout.viewBox"
+        preserveAspectRatio="xMidYMid meet"
+        @pointerdown="onGraphPointerDown"
+        @pointermove="onGraphPointerMove"
+        @pointerup="onGraphPointerEnd"
+        @pointercancel="onGraphPointerEnd"
+        @lostpointercapture="dragState = null"
+      >
         <defs>
           <marker id="ng-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e" />
@@ -343,29 +448,27 @@ function onNodeClick(node: { index?: number }) {
         </defs>
 
         <g class="grid">
-          <line v-for="(t, i) in layout.nTicks" :key="'v'+i"
-            :x1="t.x - layout.cellSize / 2" :y1="0"
-            :x2="t.x - layout.cellSize / 2" :y2="layout.height" />
-          <line :x1="layout.width" :y1="0" :x2="layout.width" :y2="layout.height" />
-          <line v-for="(t, i) in layout.zTicks" :key="'h'+i"
-            :x1="0" :y1="t.y - layout.cellSize / 2"
-            :x2="layout.width" :y2="t.y - layout.cellSize / 2" />
-          <line :x1="0" :y1="layout.height" :x2="layout.width" :y2="layout.height" />
-          <line v-if="layout.origin.x !== null" class="axis-line"
-            :x1="layout.origin.x" :y1="0" :x2="layout.origin.x" :y2="layout.height" />
-          <line v-if="layout.origin.y !== null" class="axis-line"
-            :x1="0" :y1="layout.origin.y" :x2="layout.width" :y2="layout.origin.y" />
+          <line v-for="(line, i) in layout.vGridLines" :key="'v'+i"
+            :x1="line.x" :y1="layout.viewBoxY"
+            :x2="line.x" :y2="layout.viewBoxY + layout.height" />
+          <line v-for="(line, i) in layout.hGridLines" :key="'h'+i"
+            :x1="layout.viewBoxX" :y1="line.y"
+            :x2="layout.viewBoxX + layout.width" :y2="line.y" />
+          <line class="axis-line"
+            :x1="layout.origin.x" :y1="layout.viewBoxY" :x2="layout.origin.x" :y2="layout.viewBoxY + layout.height" />
+          <line class="axis-line"
+            :x1="layout.viewBoxX" :y1="layout.origin.y" :x2="layout.viewBoxX + layout.width" :y2="layout.origin.y" />
         </g>
 
         <g class="ticks">
           <text v-for="(t, i) in layout.nLabelTicks" :key="'nt'+i"
-            :x="t.x" :y="layout.height - layout.cellSize / 2 + 4"
+            :x="t.x" :y="layout.viewBoxY + layout.height - layout.cellSize / 2 + 4"
             class="tick-label tick-n" text-anchor="middle">{{ t.n }}</text>
           <text v-for="(t, i) in layout.zLabelTicks" :key="'zt'+i"
-            :x="layout.cellSize / 2" :y="t.y - 6"
+            :x="layout.viewBoxX + layout.cellSize / 2" :y="t.y - 6"
             class="tick-label tick-z-symbol" text-anchor="middle">{{ t.symbol }}</text>
           <text v-for="(t, i) in layout.zLabelTicks" :key="'zn'+i"
-            :x="layout.cellSize / 2" :y="t.y + 8"
+            :x="layout.viewBoxX + layout.cellSize / 2" :y="t.y + 8"
             class="tick-label tick-z-number" text-anchor="middle">{{ t.z }}</text>
         </g>
 
@@ -468,10 +571,27 @@ function onNodeClick(node: { index?: number }) {
   background: #1f6feb33;
 }
 
+.zoom-btn:disabled {
+  color: #484f58;
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.recenter-btn {
+  margin-right: 2px;
+}
+
 .graph {
   display: block;
   width: 100%;
   height: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.graph.panning {
+  cursor: grabbing;
 }
 
 .grid line {
