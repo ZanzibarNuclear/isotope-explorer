@@ -354,7 +354,9 @@ const layout = computed(() => {
 });
 
 function onNodeClick(node: { index?: number }) {
-  if (node.index !== undefined) emit("go-to-step", node.index);
+  if (node.index === undefined) return;
+  recenterGraph();
+  emit("go-to-step", node.index);
 }
 
 function onGraphPointerDown(event: PointerEvent) {
@@ -494,6 +496,7 @@ function onGraphPointerEnd(event: PointerEvent) {
               clickable: node.index !== undefined,
             }"
             :transform="`translate(${node.x}, ${node.y})`"
+            @pointerdown.stop
             @click="onNodeClick(node)">
             <rect :x="-layout.nodeHW" :y="-layout.nodeHH"
               :width="layout.nodeW" :height="layout.nodeH"
