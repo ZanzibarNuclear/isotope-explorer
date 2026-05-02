@@ -239,11 +239,22 @@ onMounted(async () => {
   </div>
 </template>
 
+<style>
+html,
+body,
+#app {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+</style>
+
 <style scoped>
 .app {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: #0f1419;
   color: #e6edf3;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -294,6 +305,7 @@ onMounted(async () => {
 /* -- Viewport / chain -- */
 .viewport {
   padding: 0;
+  min-width: 0;
   overflow-y: auto;
 }
 

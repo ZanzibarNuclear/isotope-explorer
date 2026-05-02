@@ -526,6 +526,7 @@ function onGraphPointerEnd(event: PointerEvent) {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  box-sizing: border-box;
   padding: 1rem 1.25rem;
   width: 100%;
 }
