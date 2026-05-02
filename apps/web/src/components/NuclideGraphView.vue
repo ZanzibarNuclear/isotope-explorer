@@ -19,7 +19,7 @@ const NODE_HW = NODE_W / 2;
 const NODE_HH = NODE_H / 2;
 const VIEW_COLS = 7;
 const VIEW_ROWS = 5;
-const ZOOM_LEVELS = [1, 0.75, 0.5] as const;
+const ZOOM_LEVELS = [1, 0.75, 0.5, "fit"] as const;
 
 type ZoomLevel = typeof ZOOM_LEVELS[number];
 
@@ -114,6 +114,7 @@ function centeredAxisBounds(value: number, visibleCells: number) {
 }
 
 function zoomLabel(level: ZoomLevel): string {
+  if (level === "fit") return "Fit";
   return `${Math.round(level * 100)}%`;
 }
 
@@ -234,10 +235,19 @@ const layout = computed(() => {
 
   const cursorStep = steps[props.cursor] ?? steps[0];
   const activeNuclide = cursorStep.nuclide;
-  const viewCols = Math.round(VIEW_COLS / zoomLevel.value);
-  const viewRows = Math.round(VIEW_ROWS / zoomLevel.value);
-  const nBounds = centeredAxisBounds(activeNuclide.n, viewCols);
-  const zBounds = centeredAxisBounds(activeNuclide.z, viewRows);
+  const currentZoomLevel = zoomLevel.value;
+  const fitMinN = Math.max(0, dataMinN - 2);
+  const fitMaxN = dataMaxN + 1;
+  const fitMinZ = Math.max(0, dataMinZ - 2);
+  const fitMaxZ = dataMaxZ + 1;
+  const viewCols = currentZoomLevel === "fit" ? fitMaxN - fitMinN + 1 : Math.round(VIEW_COLS / currentZoomLevel);
+  const viewRows = currentZoomLevel === "fit" ? fitMaxZ - fitMinZ + 1 : Math.round(VIEW_ROWS / currentZoomLevel);
+  const nBounds = currentZoomLevel === "fit"
+    ? { min: fitMinN, max: fitMaxN }
+    : centeredAxisBounds(activeNuclide.n, viewCols);
+  const zBounds = currentZoomLevel === "fit"
+    ? { min: fitMinZ, max: fitMaxZ }
+    : centeredAxisBounds(activeNuclide.z, viewRows);
   const minN = nBounds.min, maxN = nBounds.max;
   const minZ = zBounds.min, maxZ = zBounds.max;
 
@@ -322,9 +332,10 @@ const layout = computed(() => {
     zTicks.push({ z, y: nodeY(z), symbol: elementSymbol(z) });
   }
 
-  const hasOriginCell = nTicks.some(t => t.n === 0) && zTicks.some(t => t.z === 0);
-  const nLabelTicks = hasOriginCell ? nTicks.filter(t => t.n !== 0) : nTicks;
-  const zLabelTicks = hasOriginCell ? zTicks.filter(t => t.z !== 0) : zTicks;
+  const bottomLeftN = firstNLabel;
+  const bottomLeftZ = firstZLabel;
+  const nLabelTicks = nTicks.filter(t => t.n !== bottomLeftN);
+  const zLabelTicks = zTicks.filter(t => t.z !== bottomLeftZ);
 
   return {
     nodes: placedNodes,
@@ -542,7 +553,7 @@ function onGraphPointerEnd(event: PointerEvent) {
 .zoom-control {
   position: absolute;
   top: 0.6rem;
-  right: 0.6rem;
+  right: 1.5rem;
   z-index: 1;
   display: flex;
   gap: 2px;

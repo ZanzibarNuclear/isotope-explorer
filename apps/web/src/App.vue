@@ -13,7 +13,7 @@ const pickerView = ref<PickerView>("quick");
 const pickerOpen = ref(true);
 
 type ChainViewMode = "list" | "cards" | "graph";
-const chainViewMode = ref<ChainViewMode>("cards");
+const chainViewMode = ref<ChainViewMode>("graph");
 
 const stepByStep = ref(true);
 
@@ -203,12 +203,12 @@ onMounted(async () => {
         <div class="viewport-header">
           <h2 class="panel-title">Action Viewer</h2>
           <div class="chain-view-toggle" v-if="simState">
+            <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'graph' }"
+              @click="chainViewMode = 'graph'">Graph</button>
             <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'cards' }"
               @click="chainViewMode = 'cards'">Cards</button>
             <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'list' }"
               @click="chainViewMode = 'list'">List</button>
-            <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'graph' }"
-              @click="chainViewMode = 'graph'">Graph</button>
           </div>
         </div>
         <div v-if="!simState" class="viewport-placeholder">
