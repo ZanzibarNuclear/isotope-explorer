@@ -103,12 +103,12 @@ interface RawEdge {
   ghost: boolean;
 }
 
-function centeredAxisBounds(value: number, visibleCells: number) {
+function centeredAxisBounds(value: number, visibleCells: number, minValue = 0) {
   let min = value - Math.floor(visibleCells / 2);
   let max = min + visibleCells - 1;
-  if (min < 0) {
-    max -= min;
-    min = 0;
+  if (min < minValue) {
+    max += minValue - min;
+    min = minValue;
   }
   return { min, max };
 }
@@ -236,7 +236,8 @@ const layout = computed(() => {
   const cursorStep = steps[props.cursor] ?? steps[0];
   const activeNuclide = cursorStep.nuclide;
   const currentZoomLevel = zoomLevel.value;
-  const fitMinN = Math.max(0, dataMinN - 2);
+  const minNForLabels = dataMinN === 0 ? -1 : 0;
+  const fitMinN = Math.max(minNForLabels, dataMinN - 2);
   const fitMaxN = dataMaxN + 1;
   const fitMinZ = Math.max(0, dataMinZ - 2);
   const fitMaxZ = dataMaxZ + 1;
@@ -244,7 +245,7 @@ const layout = computed(() => {
   const viewRows = currentZoomLevel === "fit" ? fitMaxZ - fitMinZ + 1 : Math.round(VIEW_ROWS / currentZoomLevel);
   const nBounds = currentZoomLevel === "fit"
     ? { min: fitMinN, max: fitMaxN }
-    : centeredAxisBounds(activeNuclide.n, viewCols);
+    : centeredAxisBounds(activeNuclide.n, viewCols, activeNuclide.n === 0 ? -1 : 0);
   const zBounds = currentZoomLevel === "fit"
     ? { min: fitMinZ, max: fitMaxZ }
     : centeredAxisBounds(activeNuclide.z, viewRows);
@@ -332,7 +333,7 @@ const layout = computed(() => {
     zTicks.push({ z, y: nodeY(z), symbol: elementSymbol(z) });
   }
 
-  const bottomLeftN = firstNLabel;
+  const bottomLeftN = minN + Math.floor(viewMinX / CELL);
   const bottomLeftZ = firstZLabel;
   const nLabelTicks = nTicks.filter(t => t.n !== bottomLeftN);
   const zLabelTicks = zTicks.filter(t => t.z !== bottomLeftZ);

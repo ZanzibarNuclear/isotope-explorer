@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { PERIODIC_TABLE } from '../data/periodic-table-layout'
+import { QUICK_PICK_CATEGORIES, type QuickPickIsotope } from '../data/quick-picks'
 
 const elementNameByZ = new Map(PERIODIC_TABLE.map(e => [e.z, e.name]))
-function isoTitle(iso: NuclideInfo): string {
-  return `${elementNameByZ.get(iso.z) ?? iso.notation.split('-')[0]}-${iso.a}`
-}
+const elementSymbolByZ = new Map(PERIODIC_TABLE.map(e => [e.z, e.symbol]))
+const elementName = (z: number) => elementNameByZ.get(z) ?? 'Unknown'
 
 interface NuclideInfo {
   z: number
@@ -21,48 +21,16 @@ interface NuclideInfo {
 const props = defineProps<{ session: any }>()
 const emit = defineEmits<{ (e: 'select-isotope', z: number, n: number): void }>()
 
-// Curated groups of elements with interesting isotope progressions
-const QUICK_PICKS: { group: string; entries: { z: number; label: string; highlight: number[] }[] }[] = [
-  {
-    group: 'Fission fuels',
-    entries: [
-      { z: 92, label: 'Uranium', highlight: [233, 235, 238] },
-      { z: 94, label: 'Plutonium', highlight: [239, 241] },
-      { z: 90, label: 'Thorium', highlight: [232] },
-    ],
-  },
-  {
-    group: 'Hydrogen family',
-    entries: [
-      { z: 1, label: 'Hydrogen', highlight: [1, 2, 3] },
-      { z: 2, label: 'Helium', highlight: [3, 4] },
-      { z: 3, label: 'Lithium', highlight: [6, 7] },
-    ],
-  },
-  {
-    group: 'Uranium decay chain',
-    entries: [
-      { z: 88, label: 'Radium', highlight: [226] },
-      { z: 86, label: 'Radon', highlight: [222] },
-      { z: 84, label: 'Polonium', highlight: [210, 214, 218] },
-      { z: 83, label: 'Bismuth', highlight: [209, 210, 214] },
-      { z: 82, label: 'Lead', highlight: [206, 207, 208] },
-    ],
-  },
-  {
-    group: 'Common radioisotopes',
-    entries: [
-      { z: 6, label: 'Carbon', highlight: [12, 14] },
-      { z: 27, label: 'Cobalt', highlight: [59, 60] },
-      { z: 38, label: 'Strontium', highlight: [88, 90] },
-      { z: 53, label: 'Iodine', highlight: [127, 131] },
-      { z: 55, label: 'Cesium', highlight: [133, 137] },
-    ],
-  },
-]
+interface QuickPickRow extends NuclideInfo {
+  primaryUse: string
+}
 
 const isotopesByElement = ref<Map<number, NuclideInfo[]>>(new Map())
 const selectedIsotope = ref<{ z: number; n: number } | null>(null)
+const selectedCategoryName = ref(QUICK_PICK_CATEGORIES[0]?.name ?? '')
+const selectedCategory = computed(() =>
+  QUICK_PICK_CATEGORIES.find(category => category.name === selectedCategoryName.value) ?? QUICK_PICK_CATEGORIES[0]!
+)
 
 function buildIndex() {
   if (!props.session) return
@@ -88,53 +56,71 @@ function buildIndex() {
 
 watch(() => props.session, buildIndex, { immediate: true })
 
-function getIsotopes(z: number, highlight: number[]): NuclideInfo[] {
-  const all = isotopesByElement.value.get(z) ?? []
-  const pinned = all.filter(iso => highlight.includes(iso.a))
-  return pinned.length > 0 ? pinned : all.slice(0, 6)
+function resolveIsotope(pick: QuickPickIsotope): QuickPickRow {
+  const all = isotopesByElement.value.get(pick.z) ?? []
+  const found = all.find(iso => iso.a === pick.a)
+  const notation = pick.label ?? found?.notation ?? `${elementSymbolByZ.get(pick.z) ?? elementName(pick.z)}-${pick.a}`
+
+  return {
+    z: pick.z,
+    n: found?.n ?? Math.max(0, pick.a - pick.z),
+    a: pick.a,
+    is_stable: pick.stable ?? found?.is_stable ?? false,
+    is_fissile: found?.is_fissile ?? false,
+    half_life_s: found?.half_life_s ?? null,
+    notation,
+    decay_modes: found?.decay_modes ?? [],
+    primaryUse: pick.primaryUse,
+  }
 }
 
-function selectIsotope(iso: NuclideInfo) {
+const selectedRows = computed(() => selectedCategory.value.isotopes.map(resolveIsotope))
+
+function selectIsotope(iso: QuickPickRow) {
   selectedIsotope.value = { z: iso.z, n: iso.n }
   emit('select-isotope', iso.z, iso.n)
 }
 
-function isSelected(iso: NuclideInfo): boolean {
+function isSelected(iso: QuickPickRow): boolean {
   return selectedIsotope.value?.z === iso.z && selectedIsotope.value?.n === iso.n
 }
 </script>
 
 <template>
   <div class="quick-pick">
-    <div v-for="group in QUICK_PICKS" :key="group.group" class="group">
-      <div class="group-label">{{ group.group }}</div>
-      <div class="group-entries">
-        <div
-          v-for="entry in group.entries"
-          :key="entry.z"
-          class="entry"
-        >
-          <span class="entry-name">{{ entry.label }}</span>
-          <div class="entry-isotopes">
-            <button
-              v-for="iso in getIsotopes(entry.z, entry.highlight)"
-              :key="iso.a"
-              class="isotope-btn"
-              :class="{
-                stable: iso.is_stable,
-                fissile: iso.is_fissile,
-                radioactive: !iso.is_stable && !iso.is_fissile,
-                selected: isSelected(iso),
-              }"
-              :title="isoTitle(iso)"
-              @click="selectIsotope(iso)"
-            >
-              {{ iso.notation }}
-            </button>
-            <span v-if="getIsotopes(entry.z, entry.highlight).length === 0" class="no-data">
-              no data
-            </span>
-          </div>
+    <label class="category-select">
+      <span class="category-label">Category</span>
+      <select v-model="selectedCategoryName">
+        <option v-for="category in QUICK_PICK_CATEGORIES" :key="category.name" :value="category.name">
+          {{ category.name }}
+        </option>
+      </select>
+    </label>
+
+    <div class="group">
+      <div class="group-label">{{ selectedCategory.name }}</div>
+      <div class="isotope-table">
+        <div class="table-header">
+          <span>Isotope</span>
+          <span>Element</span>
+          <span>Primary use</span>
+        </div>
+        <div v-for="iso in selectedRows" :key="`${iso.z}-${iso.a}`" class="entry">
+          <button
+            class="isotope-btn"
+            :class="{
+              stable: iso.is_stable,
+              fissile: iso.is_fissile,
+              radioactive: !iso.is_stable && !iso.is_fissile,
+              selected: isSelected(iso),
+            }"
+            :title="`${elementName(iso.z)}-${iso.a}`"
+            @click="selectIsotope(iso)"
+          >
+            {{ iso.notation }}
+          </button>
+          <span class="entry-name">{{ elementName(iso.z) }}</span>
+          <span class="primary-use">{{ iso.primaryUse }}</span>
         </div>
       </div>
     </div>
@@ -145,9 +131,31 @@ function isSelected(iso: NuclideInfo): boolean {
 .quick-pick {
   padding: 0.6rem 1.25rem;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1.5rem;
+  flex-direction: column;
+  gap: 0.75rem;
   background: #0d1117;
+}
+
+.category-select {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.category-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #8b949e;
+}
+
+.category-select select {
+  min-width: 12rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  background: #161b22;
+  color: #e6edf3;
+  font: inherit;
 }
 
 .group {
@@ -165,29 +173,36 @@ function isSelected(iso: NuclideInfo): boolean {
   color: #484f58;
 }
 
-.group-entries {
-  display: flex;
-  flex-direction: column;
+.isotope-table {
+  display: grid;
   gap: 0.25rem;
+  max-width: 46rem;
+}
+
+.table-header,
+.entry {
+  display: grid;
+  grid-template-columns: 6rem 8rem minmax(12rem, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.table-header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #484f58;
 }
 
 .entry {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  min-width: 0;
 }
 
 .entry-name {
   font-size: 0.8rem;
   color: #8b949e;
-  min-width: 5.5rem;
-  flex-shrink: 0;
-}
-
-.entry-isotopes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
+  min-width: 0;
 }
 
 .isotope-btn {
@@ -202,6 +217,28 @@ function isSelected(iso: NuclideInfo): boolean {
   transition: border-color 0.12s, background 0.12s;
   white-space: nowrap;
 }
+
+.primary-use {
+  min-width: 0;
+  color: #c9d1d9;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 560px) {
+  .table-header {
+    display: none;
+  }
+
+  .entry {
+    grid-template-columns: 5.5rem 1fr;
+    gap: 0.25rem 0.75rem;
+  }
+
+  .primary-use {
+    grid-column: 2;
+  }
+}
+
 .isotope-btn:hover {
   border-color: #58a6ff;
   background: #1c2128;
@@ -221,8 +258,4 @@ function isSelected(iso: NuclideInfo): boolean {
   border-left: 2px solid #8b949e;
 }
 
-.no-data {
-  font-size: 0.75rem;
-  color: #484f58;
-}
 </style>

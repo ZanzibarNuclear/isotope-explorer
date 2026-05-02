@@ -185,19 +185,26 @@ onMounted(async () => {
       <template v-else>
         <h2 class="picker-heading">Choose an Isotope</h2>
         <div class="picker-toggle">
-          <button class="toggle-btn" :class="{ active: pickerView === 'quick' }" @click="pickerView = 'quick'">
-            Quick Pick
-          </button>
-          <button class="toggle-btn" :class="{ active: pickerView === 'table' }" @click="pickerView = 'table'">
-            Periodic Table
-          </button>
+          <div class="picker-tabs">
+            <button class="toggle-btn" :class="{ active: pickerView === 'quick' }" @click="pickerView = 'quick'">
+              Quick Pick
+            </button>
+            <button class="toggle-btn" :class="{ active: pickerView === 'table' }" @click="pickerView = 'table'">
+              Periodic Table
+            </button>
+          </div>
+          <div class="isotope-legend" aria-label="Isotope color legend">
+            <span class="legend-item"><span class="legend-swatch stable"></span>Stable</span>
+            <span class="legend-item"><span class="legend-swatch fissile"></span>Fissile</span>
+            <span class="legend-item"><span class="legend-swatch radioactive"></span>Radioactive</span>
+          </div>
         </div>
         <PeriodicTablePicker v-if="pickerView === 'table'" :session="session" @select-isotope="onSelectIsotope" />
         <QuickPickList v-else :session="session" @select-isotope="onSelectIsotope" />
       </template>
     </section>
 
-    <main class="main">
+    <main v-if="!pickerOpen" class="main">
       <!-- Left: chain visualization -->
       <section class="viewport" aria-label="Reaction chain">
         <div class="viewport-header">
@@ -415,9 +422,16 @@ body,
 
 .picker-toggle {
   display: flex;
-  gap: 2px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 0.5rem 1.25rem 0;
   background: #0d1117;
+}
+
+.picker-tabs {
+  display: flex;
+  gap: 2px;
 }
 
 .toggle-btn {
@@ -442,6 +456,52 @@ body,
   background: #21262d;
   color: #e6edf3;
   border-color: #30363d;
+}
+
+.isotope-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding-bottom: 0.35rem;
+  color: #8b949e;
+  font-size: 0.75rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.legend-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+  background: #8b949e;
+}
+
+.legend-swatch.stable {
+  background: #3fb950;
+}
+
+.legend-swatch.fissile {
+  background: #f0883e;
+}
+
+.legend-swatch.radioactive {
+  background: #8b949e;
+}
+
+@media (max-width: 640px) {
+  .picker-toggle {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .isotope-legend {
+    padding-bottom: 0;
+  }
 }
 
 </style>
