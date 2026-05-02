@@ -426,6 +426,7 @@ body,
   justify-content: space-between;
   gap: 1rem;
   padding: 0.5rem 1.25rem 0;
+  border-bottom: 1px solid #30363d;
   background: #0d1117;
 }
 
@@ -456,6 +457,9 @@ body,
   background: #21262d;
   color: #e6edf3;
   border-color: #30363d;
+  border-bottom-color: #21262d;
+  margin-bottom: -1px;
+  padding-bottom: calc(0.3rem + 1px);
 }
 
 .isotope-legend {

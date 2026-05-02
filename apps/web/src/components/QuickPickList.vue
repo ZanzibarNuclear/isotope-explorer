@@ -25,9 +25,18 @@ interface QuickPickRow extends NuclideInfo {
   primaryUse: string
 }
 
+const CATEGORY_STORAGE_KEY = 'isotope-explorer.quickPickCategory'
+const defaultCategoryName = QUICK_PICK_CATEGORIES[0]?.name ?? ''
+
+function validCategoryName(name: string | null): string {
+  return QUICK_PICK_CATEGORIES.some(category => category.name === name) ? name! : defaultCategoryName
+}
+
+let lastSelectedCategoryName = validCategoryName(localStorage.getItem(CATEGORY_STORAGE_KEY))
+
 const isotopesByElement = ref<Map<number, NuclideInfo[]>>(new Map())
 const selectedIsotope = ref<{ z: number; n: number } | null>(null)
-const selectedCategoryName = ref(QUICK_PICK_CATEGORIES[0]?.name ?? '')
+const selectedCategoryName = ref(lastSelectedCategoryName)
 const selectedCategory = computed(() =>
   QUICK_PICK_CATEGORIES.find(category => category.name === selectedCategoryName.value) ?? QUICK_PICK_CATEGORIES[0]!
 )
@@ -55,6 +64,10 @@ function buildIndex() {
 }
 
 watch(() => props.session, buildIndex, { immediate: true })
+watch(selectedCategoryName, name => {
+  lastSelectedCategoryName = name
+  localStorage.setItem(CATEGORY_STORAGE_KEY, name)
+}, { flush: 'sync' })
 
 function resolveIsotope(pick: QuickPickIsotope): QuickPickRow {
   const all = isotopesByElement.value.get(pick.z) ?? []
@@ -155,7 +168,8 @@ function isSelected(iso: QuickPickRow): boolean {
   border-radius: 4px;
   background: #161b22;
   color: #e6edf3;
-  font: inherit;
+  font-size: 0.8rem;
+  font-family: inherit;
 }
 
 .group {
