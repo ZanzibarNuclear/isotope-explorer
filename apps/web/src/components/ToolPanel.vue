@@ -28,9 +28,65 @@ const canStepForward = computed(
 );
 const canFire = computed(() => props.simState?.can_fire ?? false);
 const canDecay = computed(() => props.simState?.can_decay ?? false);
+const HALF_LIFE_INFINITY = "\u221e";
 
 function elementName(z: number): string {
   return ELEMENT_NAME_BY_Z.get(z) ?? "Unknown";
+}
+
+function formatHalfLife(seconds: number): string {
+  const minute = 60;
+  const hour = 3600;
+  const day = 24 * hour;
+  const year = 365.25 * day;
+
+  const formatValue = (value: number) =>
+    value < 100 ? value.toPrecision(3) : Math.round(value).toLocaleString();
+
+  if (seconds >= year) {
+    const years = seconds / year;
+    const yearScales = [
+      { value: 1e21, unit: "sextillion years" },
+      { value: 1e18, unit: "quintillion years" },
+      { value: 1e15, unit: "quadrillion years" },
+      { value: 1e12, unit: "trillion years" },
+      { value: 1e9, unit: "billion years" },
+      { value: 1e6, unit: "million years" },
+      { value: 1e3, unit: "thousand years" },
+    ];
+    const scale = yearScales.find((candidate) => years >= candidate.value);
+    if (scale) return `${formatValue(years / scale.value)} ${scale.unit}`;
+    return `${Math.round(years).toLocaleString()} years`;
+  }
+
+  if (seconds >= day) return `${(seconds / day).toFixed(1)} days`;
+  if (seconds >= hour) return `${(seconds / hour).toFixed(1)} hours`;
+  if (seconds >= minute) return `${(seconds / minute).toFixed(1)} minutes`;
+  if (seconds >= 1) {
+    return `${formatValue(seconds)} seconds`;
+  }
+
+  const subsecondScales = [
+    { value: 1e-3, unit: "milliseconds" },
+    { value: 1e-6, unit: "microseconds" },
+    { value: 1e-9, unit: "nanoseconds" },
+    { value: 1e-12, unit: "picoseconds" },
+    { value: 1e-15, unit: "femtoseconds" },
+    { value: 1e-18, unit: "attoseconds" },
+    { value: 1e-21, unit: "zeptoseconds" },
+    { value: 1e-24, unit: "yoctoseconds" },
+  ];
+  const scale = subsecondScales.find((candidate) => seconds >= candidate.value);
+  if (scale) return `${formatValue(seconds / scale.value)} ${scale.unit}`;
+  return `${seconds.toPrecision(2)} seconds`;
+}
+
+function halfLifeDisplay(state: SimState): string {
+  const step = state.current_step;
+  if (!step.nuclide_in_database) return "??";
+  if (step.nuclide_is_stable) return HALF_LIFE_INFINITY;
+  if (typeof step.nuclide_half_life_s === "number") return formatHalfLife(step.nuclide_half_life_s);
+  return "\u2014";
 }
 </script>
 
@@ -108,6 +164,10 @@ function elementName(z: number): string {
             {{ simState.current_step.nuclide.z }} /
             {{ simState.current_step.nuclide.n }} /
             {{ simState.current_step.nuclide.a }}
+          </dd>
+          <dt>Half-life</dt>
+          <dd :class="{ 'is-infinite-half-life': simState.current_step.nuclide_is_stable }">
+            {{ halfLifeDisplay(simState) }}
           </dd>
           <template v-if="simState.current_step.detail?.decay_mode">
             <dt>Decay mode</dt>
@@ -343,6 +403,12 @@ function elementName(z: number): string {
 
 .detail-props dd {
   margin: 0;
+}
+
+.detail-props .is-infinite-half-life {
+  color: #3fb95099;
+  font-size: 1.05rem;
+  line-height: 1;
 }
 
 .detail-card.unknown {

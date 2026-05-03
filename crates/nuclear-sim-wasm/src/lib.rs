@@ -100,7 +100,9 @@ fn decay_mode_name(mode: &DecayMode) -> &'static str {
 
 fn nuclide_timing(sim: &CoreSim, nuclide: &Nuclide) -> (bool, bool, Option<f64>) {
     sim.lookup(nuclide).map_or((false, false, None), |d| {
-        (d.stability == Stability::Stable, true, d.half_life_s)
+        let effectively_stable = d.stability == Stability::Stable || d.decay_modes.is_empty();
+        let half_life_s = if effectively_stable { None } else { d.half_life_s };
+        (effectively_stable, true, half_life_s)
     })
 }
 
@@ -308,11 +310,12 @@ fn all_steps_vec(sim: &CoreSim) -> Vec<StepJs> {
 fn lookup_nuclide_data(sim: &CoreSim, z: u16, n: u16) -> Option<NuclideDataJs> {
     let nuclide = Nuclide::try_new(z, n).ok()?;
     let data = sim.lookup(&nuclide)?;
+    let effectively_stable = data.stability == Stability::Stable || data.decay_modes.is_empty();
     Some(NuclideDataJs {
         notation: nuclide.notation(),
-        is_stable: data.stability == Stability::Stable,
+        is_stable: effectively_stable,
         is_fissile: data.is_fissile(),
-        half_life_s: data.half_life_s,
+        half_life_s: if effectively_stable { None } else { data.half_life_s },
         decay_modes: data
             .decay_modes
             .iter()
@@ -917,6 +920,25 @@ mod tests {
         assert_eq!(data.notation, "C-14");
         assert!(!data.is_stable);
         assert!(data.decay_modes.contains(&"beta-minus".to_string()));
+    }
+
+    #[test]
+    fn lookup_nuclide_with_no_decay_modes_is_effectively_stable() {
+        let s = SimSession::new();
+        let data = s.lookup_data(54, 80).expect("Xe-134 in extracted db");
+        assert_eq!(data.notation, "Xe-134");
+        assert!(data.is_stable);
+        assert!(data.half_life_s.is_none());
+        assert!(data.decay_modes.is_empty());
+    }
+
+    #[test]
+    fn step_for_nuclide_with_no_decay_modes_is_effectively_stable() {
+        let sim = test_sim();
+        let xe134 = Nuclide::try_new(54, 80).unwrap();
+        let step = event_to_step(0, &SimEvent::Start { nuclide: xe134 }, &sim);
+        assert!(step.nuclide_is_stable);
+        assert!(step.nuclide_half_life_s.is_none());
     }
 
     #[test]
