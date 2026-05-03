@@ -54,14 +54,14 @@ function elementName(z: number): string {
     <div class="section" v-if="simState">
       <h2>Actions</h2>
       <div class="action-btns">
-        <button class="fire-btn slow" :disabled="!canFire" @click="emit('fire-neutron', 'slow')">
+        <button class="fire-btn slow" :disabled="!canFire" title="Add thermal neutron" @click="emit('fire-neutron', 'slow')">
           Thermal
         </button>
-        <button class="fire-btn fast" :disabled="!canFire" @click="emit('fire-neutron', 'fast')">
+        <button class="fire-btn fast" :disabled="!canFire" title="Add fast neutron" @click="emit('fire-neutron', 'fast')">
           Fast
         </button>
-        <button class="fire-btn decay" :disabled="!canDecay" @click="emit('induce-decay')">
-          Induce Decay
+        <button class="fire-btn decay" :disabled="!canDecay" title="Observe decay" @click="emit('induce-decay')">
+          Decay
         </button>
       </div>
     </div>
@@ -164,7 +164,8 @@ function elementName(z: number): string {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #8b949e;
+  text-align: center;
+  color: #58a6ff;
 }
 
 .action-btns {
