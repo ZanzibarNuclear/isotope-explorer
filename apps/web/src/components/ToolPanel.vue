@@ -187,7 +187,7 @@ function halfLifeDisplay(state: SimState): string {
 
 <style scoped>
 .panel {
-  align-self: start;
+  align-self: stretch;
   justify-self: end;
   width: 100%;
   box-sizing: border-box;
@@ -195,12 +195,15 @@ function halfLifeDisplay(state: SimState): string {
   border-left: 1px solid #30363d;
   background: #161b22;
   overflow-y: auto;
+  min-height: 0;
 }
 
 @media (max-width: 720px) {
   .panel {
     border-left: none;
     border-top: 1px solid #30363d;
+    justify-self: stretch;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 }
 

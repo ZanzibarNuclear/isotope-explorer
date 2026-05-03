@@ -288,6 +288,7 @@ body,
   flex: 1;
   display: grid;
   grid-template-columns: 1fr minmax(280px, 340px);
+  grid-template-rows: minmax(0, 1fr);
   gap: 0;
   min-height: 0;
 }
@@ -295,6 +296,8 @@ body,
 @media (max-width: 720px) {
   .main {
     grid-template-columns: 1fr;
+    /* Action viewer fills remaining viewport; controls sit in a fixed-height drawer that scrolls */
+    grid-template-rows: minmax(0, 1fr) minmax(8rem, min(52vh, 380px));
   }
 }
 
@@ -313,6 +316,7 @@ body,
 .viewport {
   padding: 0;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
 }
 
