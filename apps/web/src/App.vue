@@ -296,8 +296,8 @@ body,
 @media (max-width: 720px) {
   .main {
     grid-template-columns: 1fr;
-    /* Action viewer fills remaining viewport; controls sit in a fixed-height drawer that scrolls */
-    grid-template-rows: minmax(0, 1fr) minmax(8rem, min(52vh, 380px));
+    /* Viewer row uses almost all height; compact tools drawer scrolls internally */
+    grid-template-rows: minmax(0, 1fr) minmax(6.5rem, min(34vh, 280px));
   }
 }
 
@@ -318,6 +318,24 @@ body,
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+}
+
+@media (max-width: 720px) {
+  .viewport {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .viewport-header {
+    flex-shrink: 0;
+  }
+
+  .viewport > *:not(.viewport-header) {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
 }
 
 .viewport-header {
