@@ -168,7 +168,7 @@ onMounted(async () => {
   <div class="app">
     <header class="header">
       <h1>Isotope Explorer</h1>
-      <p class="subtitle">Fire neutrons at nuclei and see what happens</p>
+      <p class="subtitle">Pick an isotope, fire neutrons, induce decay, and see what happens</p>
     </header>
 
     <!-- Isotope picker (full width) -->
