@@ -35,7 +35,7 @@ function refreshState() {
   if (!session.value) return;
   simState.value = session.value.state();
   allSteps.value = session.value.all_steps();
-  if (stepByStep.value && simState.value?.has_fission_branch) {
+  if (simState.value?.has_fission_branch) {
     fissionTails.value = session.value.fission_tails() ?? undefined;
   } else {
     fissionTails.value = undefined;
@@ -224,7 +224,7 @@ onMounted(async () => {
         <ChainView v-else-if="chainViewMode === 'list'" :steps="allSteps" :cursor="simState.cursor"
           @go-to-step="goToStep" />
         <NuclideGraphView v-else-if="chainViewMode === 'graph'" :steps="allSteps" :cursor="simState.cursor"
-          @go-to-step="goToStep" />
+          :fission-tails="fissionTails" @go-to-step="goToStep" />
         <CardChainView v-else :session="session" :steps="allSteps" :cursor="simState.cursor"
           :following-heavy="simState.following_heavy" :step-by-step="stepByStep" :fission-tails="fissionTails"
           @go-to-step="goToStep" @go-to-branch-step="onGoToBranchStep" @switch-fragment="onSwitchFragment" />

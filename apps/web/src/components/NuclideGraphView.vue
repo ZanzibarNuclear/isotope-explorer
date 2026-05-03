@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { StepInfo } from "@wasm/nuclear_sim_wasm.js";
+import type { NuclideInfo, StepInfo } from "@wasm/nuclear_sim_wasm.js";
 import { PERIODIC_TABLE } from "../data/periodic-table-layout";
 
 const props = defineProps<{
   steps: StepInfo[];
   cursor: number;
+  fissionTails?: {
+    following_light: boolean;
+    light: StepInfo[];
+    heavy: StepInfo[];
+  };
 }>();
 
 const emit = defineEmits<{
@@ -119,6 +124,11 @@ interface RawEdge {
   ghost: boolean;
 }
 
+interface NuclidePoint {
+  z: number;
+  n: number;
+}
+
 function centeredAxisBounds(value: number, visibleCells: number, minValue = 0) {
   let min = value - Math.floor(visibleCells / 2);
   let max = min + visibleCells - 1;
@@ -152,7 +162,7 @@ const layout = computed(() => {
   const start = steps[0].nuclide;
 
   const nodeMap = new Map<string, RawNode>();
-  const edges: RawEdge[] = [];
+  const edgeMap = new Map<string, RawEdge>();
 
   const key = (z: number, n: number) => `${z}:${n}`;
 
@@ -196,6 +206,83 @@ const layout = computed(() => {
     });
   }
 
+  function addEdge(edge: RawEdge) {
+    const k = [
+      edge.fromZ,
+      edge.fromN,
+      edge.toZ,
+      edge.toN,
+      edge.kind,
+      edge.label,
+    ].join(":");
+    const existing = edgeMap.get(k);
+    if (existing) {
+      if (existing.ghost && !edge.ghost) existing.ghost = false;
+      return;
+    }
+    edgeMap.set(k, edge);
+  }
+
+  function addFragmentNode(fragment: NuclideInfo, ghost: boolean) {
+    // Fragment half_life_s convention: undefined = unknown, null = stable.
+    const hl = fragment.half_life_s;
+    addNode(fragment.z, fragment.n, fragment.notation, {
+      ghost,
+      unknown: hl === undefined,
+      isStable: hl === null,
+      halfLife: typeof hl === "number" ? hl : undefined,
+    });
+  }
+
+  function edgeKindForStep(step: StepInfo): RawEdge["kind"] {
+    return step.event_type === "neutron-absorbed"
+      ? "neutron"
+      : step.event_type === "fission"
+        ? "fission"
+        : "decay";
+  }
+
+  function addRevealedTail(
+    parent: NuclidePoint,
+    fragment: NuclideInfo | undefined,
+    tail: StepInfo[],
+    activeLeg: boolean,
+  ) {
+    if (!fragment || tail.length === 0) return;
+
+    addFragmentNode(fragment, false);
+    addEdge({
+      fromZ: parent.z,
+      fromN: parent.n,
+      toZ: fragment.z,
+      toN: fragment.n,
+      label: "",
+      kind: "fission",
+      ghost: false,
+    });
+
+    let previous: NuclidePoint = fragment;
+    for (const step of tail) {
+      if (step.event_type === "stable") continue;
+      addNode(step.nuclide.z, step.nuclide.n, step.nuclide.notation, {
+        index: activeLeg ? step.index : undefined,
+        isStable: step.nuclide_is_stable,
+        unknown: !step.nuclide_in_database,
+        halfLife: step.nuclide_half_life_s,
+      });
+      addEdge({
+        fromZ: previous.z,
+        fromN: previous.n,
+        toZ: step.nuclide.z,
+        toN: step.nuclide.n,
+        label: edgeLabel(step),
+        kind: edgeKindForStep(step),
+        ghost: false,
+      });
+      previous = step.nuclide;
+    }
+  }
+
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     if (step.event_type === "stable") continue;
@@ -209,20 +296,13 @@ const layout = computed(() => {
 
     if (i > 0) {
       const prev = steps[i - 1];
-      const kind: RawEdge["kind"] =
-        step.event_type === "neutron-absorbed"
-          ? "neutron"
-          : step.event_type === "fission"
-            ? "fission"
-            : "decay";
-
-      edges.push({
+      addEdge({
         fromZ: prev.nuclide.z,
         fromN: prev.nuclide.n,
         toZ: step.nuclide.z,
         toN: step.nuclide.n,
         label: edgeLabel(step),
-        kind,
+        kind: edgeKindForStep(step),
         ghost: false,
       });
 
@@ -234,15 +314,8 @@ const layout = computed(() => {
           !!frag && frag.z === followed.z && frag.n === followed.n;
         const other = isFollowed(heavy) ? light : heavy;
         if (other) {
-          // Fragment half_life_s convention: undefined = unknown, null = stable.
-          const hl = other.half_life_s;
-          addNode(other.z, other.n, other.notation, {
-            ghost: true,
-            unknown: hl === undefined,
-            isStable: hl === null,
-            halfLife: typeof hl === "number" ? hl : undefined,
-          });
-          edges.push({
+          addFragmentNode(other, true);
+          addEdge({
             fromZ: prev.nuclide.z,
             fromN: prev.nuclide.n,
             toZ: other.z,
@@ -256,7 +329,26 @@ const layout = computed(() => {
     }
   }
 
+  const fi = steps.findIndex((step) => step.event_type === "fission");
+  const fissionStep = fi >= 0 ? steps[fi] : undefined;
+  const fissionParent = fi > 0 ? steps[fi - 1].nuclide : fissionStep?.detail?.parent;
+  if (fissionStep && fissionParent && props.fissionTails) {
+    addRevealedTail(
+      fissionParent,
+      fissionStep.detail?.light_fragment,
+      props.fissionTails.light,
+      props.fissionTails.following_light,
+    );
+    addRevealedTail(
+      fissionParent,
+      fissionStep.detail?.heavy_fragment,
+      props.fissionTails.heavy,
+      !props.fissionTails.following_light,
+    );
+  }
+
   const nodes = Array.from(nodeMap.values());
+  const edges = Array.from(edgeMap.values());
 
   let dataMinZ = start.z,
     dataMaxZ = start.z,
