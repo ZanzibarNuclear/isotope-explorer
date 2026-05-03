@@ -1,6 +1,6 @@
 [package]
 name = "nuclear-sim"
-version = "0.3.0"
+version = "1.0.0"
 edition = "2021"
 description = "Core nuclear simulation logic (isotopes, reactions, energy)"
 
