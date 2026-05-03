@@ -640,10 +640,56 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::build_stub_database;
+    use crate::data::{build_extracted_database, build_stub_database};
+    use std::collections::HashSet;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    struct FissionSignature {
+        light: Nuclide,
+        heavy: Nuclide,
+        neutrons_released: u8,
+    }
 
     fn new_sim() -> Simulation {
         Simulation::new(build_stub_database())
+    }
+
+    fn new_extracted_seeded(seed: u64) -> Simulation {
+        Simulation::new_seeded(build_extracted_database(), seed)
+    }
+
+    fn fire_extracted_u235_step(seed: u64) -> Simulation {
+        let mut sim = new_extracted_seeded(seed);
+        sim.set_isotope(92, 143).unwrap();
+        sim.fire_neutron_step(NeutronEnergy::Slow).unwrap();
+        sim
+    }
+
+    fn fission_signature(sim: &Simulation) -> FissionSignature {
+        sim.steps()
+            .iter()
+            .find_map(|event| match event {
+                SimEvent::Fission {
+                    light,
+                    heavy,
+                    neutrons_released,
+                    ..
+                } => Some(FissionSignature {
+                    light: *light,
+                    heavy: *heavy,
+                    neutrons_released: *neutrons_released,
+                }),
+                _ => None,
+            })
+            .expect("simulation should contain a fission event")
+    }
+
+    fn tail_nuclides_after_fission(sim: &Simulation) -> Vec<Nuclide> {
+        let branch = sim.fission_branches().first().expect("fission branch should exist");
+        sim.steps()[branch.fission_step + 1..]
+            .iter()
+            .map(SimEvent::resulting_nuclide)
+            .collect()
     }
 
     #[test]
@@ -716,6 +762,125 @@ mod tests {
         for (a, b) in preview.iter().zip(tail.iter()) {
             assert_eq!(a.resulting_nuclide(), b.resulting_nuclide());
         }
+    }
+
+    #[test]
+    fn extracted_u235_has_multiple_fission_product_variants() {
+        let db = build_extracted_database();
+        let u235 = Nuclide::uranium_235();
+        let data = db.get(&u235).expect("U-235 should be in extracted data");
+
+        let unique_pairs: HashSet<_> = data
+            .fission_products
+            .iter()
+            .map(|p| (p.light, p.heavy, p.neutrons_released))
+            .collect();
+
+        assert!(unique_pairs.len() > 1, "U-235 should expose varied fission outcomes");
+    }
+
+    #[test]
+    fn extracted_u235_sampling_varies_across_new_fissions() {
+        let mut sampled_pairs = HashSet::new();
+
+        for seed in 0..64 {
+            let sim = fire_extracted_u235_step(seed);
+            sampled_pairs.insert(fission_signature(&sim));
+            if sampled_pairs.len() > 1 {
+                break;
+            }
+        }
+
+        assert!(sampled_pairs.len() > 1, "different U-235 fissions should be able to sample different pairs");
+    }
+
+    #[test]
+    fn navigation_does_not_resample_extracted_u235_fission_pair() {
+        let mut sim = fire_extracted_u235_step(7);
+        let original = fission_signature(&sim);
+        let fission_step = sim.fission_branches()[0].fission_step;
+
+        sim.go_to_step(0).unwrap();
+        assert_eq!(fission_signature(&sim), original);
+
+        sim.step_forward().unwrap();
+        assert_eq!(sim.cursor(), fission_step);
+        assert_eq!(fission_signature(&sim), original);
+
+        sim.step_back().unwrap();
+        sim.go_to_step(fission_step).unwrap();
+        assert_eq!(fission_signature(&sim), original);
+    }
+
+    #[test]
+    fn step_by_step_branch_switching_preserves_fission_pair_and_tail_state() {
+        let mut sim = fire_extracted_u235_step(11);
+        let original = fission_signature(&sim);
+        let fission_step = sim.fission_branches()[0].fission_step;
+
+        assert!(!sim.fission_branches()[0].following_light());
+        assert_eq!(sim.current_nuclide(), original.heavy);
+
+        sim.switch_branch_step(0, true).unwrap();
+        assert_eq!(fission_signature(&sim), original);
+        assert!(sim.fission_branches()[0].following_light());
+        assert_eq!(sim.current_nuclide(), original.light);
+
+        if sim.can_decay() {
+            sim.induce_decay().unwrap();
+        }
+        let light_tail = tail_nuclides_after_fission(&sim);
+
+        sim.switch_branch_step(0, false).unwrap();
+        assert_eq!(fission_signature(&sim), original);
+        assert!(!sim.fission_branches()[0].following_light());
+        assert_eq!(sim.cursor(), fission_step);
+        assert_eq!(sim.current_nuclide(), original.heavy);
+
+        sim.switch_branch_step(0, true).unwrap();
+        assert_eq!(fission_signature(&sim), original);
+        assert_eq!(tail_nuclides_after_fission(&sim), light_tail);
+    }
+
+    #[test]
+    fn auto_chain_branch_switching_preserves_fission_pair_and_cached_tails() {
+        let mut sim = new_extracted_seeded(19);
+        sim.set_isotope(92, 143).unwrap();
+        sim.fire_neutron(NeutronEnergy::Slow).unwrap();
+
+        let original = fission_signature(&sim);
+        let heavy_tail = tail_nuclides_after_fission(&sim);
+        assert!(!heavy_tail.is_empty(), "auto-chain should build the heavy tail");
+
+        sim.switch_branch(0, true).unwrap();
+        assert_eq!(fission_signature(&sim), original);
+        assert!(sim.fission_branches()[0].following_light());
+        let light_tail = tail_nuclides_after_fission(&sim);
+
+        sim.switch_branch(0, false).unwrap();
+        assert_eq!(fission_signature(&sim), original);
+        assert_eq!(tail_nuclides_after_fission(&sim), heavy_tail);
+
+        sim.switch_branch(0, true).unwrap();
+        assert_eq!(fission_signature(&sim), original);
+        assert_eq!(tail_nuclides_after_fission(&sim), light_tail);
+    }
+
+    #[test]
+    fn firing_neutron_from_upstream_is_the_reset_path_for_fission_pair_state() {
+        let mut sim = fire_extracted_u235_step(23);
+        let first_pair = fission_signature(&sim);
+
+        sim.switch_branch_step(0, true).unwrap();
+        assert!(sim.fission_branches()[0].following_light());
+        assert_eq!(fission_signature(&sim), first_pair);
+
+        sim.go_to_step(0).unwrap();
+        sim.fire_neutron_step(NeutronEnergy::Slow).unwrap();
+
+        assert_eq!(sim.fission_branches().len(), 1);
+        assert!(!sim.fission_branches()[0].following_light());
+        assert_eq!(sim.current_nuclide(), fission_signature(&sim).heavy);
     }
 
     #[test]

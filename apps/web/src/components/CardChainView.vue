@@ -8,12 +8,21 @@ const props = defineProps<{
   followingHeavy?: boolean;
   session: unknown;
   stepByStep?: boolean;
-  fissionTails?: { following_light: boolean; light: StepInfo[]; heavy: StepInfo[] };
+  fissionTails?: {
+    following_light: boolean;
+    light: StepInfo[];
+    heavy: StepInfo[];
+  };
 }>();
 
 const emit = defineEmits<{
   (e: "go-to-step", index: number): void;
-  (e: "go-to-branch-step", leg: "light" | "heavy", fissionIndex: number, offset: number): void;
+  (
+    e: "go-to-branch-step",
+    leg: "light" | "heavy",
+    fissionIndex: number,
+    offset: number,
+  ): void;
   (e: "switch-fragment", leg: "light" | "heavy"): void;
 }>();
 
@@ -40,7 +49,13 @@ type RenderItem = CardItem | ConnectorItem | FissionSplitItem;
 
 type RenderBlock =
   | { kind: "segment"; items: RenderItem[] }
-  | { kind: "fission"; step: StepInfo; followedIsHeavy: boolean; label: string; isActive: boolean }
+  | {
+      kind: "fission";
+      step: StepInfo;
+      followedIsHeavy: boolean;
+      label: string;
+      isActive: boolean;
+    }
   | { kind: "parallel"; lightItems: RenderItem[]; heavyItems: RenderItem[] };
 
 // ── Formatters ───────────────────────────────────────────────────────────────
@@ -77,14 +92,16 @@ function formatHalfLife(s: number | null): string {
   if (s >= day) return `${(s / day).toFixed(1)} d`;
   if (s >= hr) return `${(s / hr).toFixed(1)} h`;
   if (s >= min) return `${(s / min).toFixed(1)} min`;
-  if (s >= 1) return `${s < 100 ? s.toPrecision(3) : Math.round(s).toLocaleString()} s`;
+  if (s >= 1)
+    return `${s < 100 ? s.toPrecision(3) : Math.round(s).toLocaleString()} s`;
   return `${s.toPrecision(2)} s`;
 }
 
 function halfLifeDisplay(step: StepInfo): string {
   if (!step.nuclide_in_database) return "??";
   if (step.nuclide_is_stable) return HALF_LIFE_INFINITY;
-  if (step.nuclide_half_life_s != null) return formatHalfLife(step.nuclide_half_life_s);
+  if (step.nuclide_half_life_s != null)
+    return formatHalfLife(step.nuclide_half_life_s);
   return "\u2014";
 }
 
@@ -94,7 +111,11 @@ function fragHalfLifeDisplay(frag: NuclideInfo): string {
   return formatHalfLife(frag.half_life_s);
 }
 
-function makeLineItems(steps: StepInfo[], cursor: number, cursorActive: boolean): RenderItem[] {
+function makeLineItems(
+  steps: StepInfo[],
+  cursor: number,
+  cursorActive: boolean,
+): RenderItem[] {
   const items: RenderItem[] = [];
   for (const step of steps) {
     const isActive = cursorActive && step.index === cursor;
@@ -142,7 +163,9 @@ function makeLineItems(steps: StepInfo[], cursor: number, cursorActive: boolean)
   return items;
 }
 
-const fissionIndex = computed(() => props.steps.findIndex((s) => s.event_type === "fission"));
+const fissionIndex = computed(() =>
+  props.steps.findIndex((s) => s.event_type === "fission"),
+);
 
 const followedTail = computed(() => {
   const fi = fissionIndex.value;
@@ -154,10 +177,13 @@ const lightPreview = ref<StepInfo[]>([]);
 const heavyPreview = ref<StepInfo[]>([]);
 
 watch(
-  () => [props.steps, props.session, fissionIndex.value, props.stepByStep] as const,
+  () =>
+    [props.steps, props.session, fissionIndex.value, props.stepByStep] as const,
   () => {
     const fi = fissionIndex.value;
-    const session = props.session as { decay_chain_preview?: (z: number, n: number) => StepInfo[] } | null;
+    const session = props.session as {
+      decay_chain_preview?: (z: number, n: number) => StepInfo[];
+    } | null;
     if (fi < 0 || !session?.decay_chain_preview || props.stepByStep) {
       lightPreview.value = [];
       heavyPreview.value = [];
@@ -179,7 +205,7 @@ watch(
       heavyPreview.value = [];
     }
   },
-  { immediate: true, deep: true }
+  { immediate: true, deep: true },
 );
 
 const fh = computed(() => props.followingHeavy ?? true);
@@ -207,7 +233,10 @@ const renderBlocks = computed((): RenderBlock[] => {
   const label = n ? `+ ${e} → fission +${n}n` : `+ ${e} → fission`;
 
   return [
-    { kind: "segment", items: makeLineItems(props.steps.slice(0, fi), cur, true) },
+    {
+      kind: "segment",
+      items: makeLineItems(props.steps.slice(0, fi), cur, true),
+    },
     {
       kind: "fission",
       step: fissionStep,
@@ -243,7 +272,8 @@ function onLegCardClick(leg: "light" | "heavy", step: StepInfo) {
     return;
   }
 
-  const preview = (leg === "light" && fh.value) || (leg === "heavy" && !fh.value);
+  const preview =
+    (leg === "light" && fh.value) || (leg === "heavy" && !fh.value);
   if (preview) {
     emit("go-to-branch-step", leg, fi, step.index);
   } else {
@@ -265,7 +295,9 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
     <template v-for="(block, bi) in renderBlocks" :key="bi">
       <!-- Linear segment (prefix or full chain when no split) -->
       <template v-if="block.kind === 'segment'">
-        <template v-for="(item, idx) in block.items" :key="'s-' + bi + '-' + idx">
+        <template
+          v-for="(item, idx) in block.items"
+          :key="'s-' + bi + '-' + idx">
           <div
             v-if="item.kind === 'card'"
             class="iso-card"
@@ -274,20 +306,27 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
               stable: item.step.nuclide_is_stable,
               unknown: !item.step.nuclide_in_database,
             }"
-            @click="onSegmentCardClick(item.step)"
-          >
+            @click="onSegmentCardClick(item.step)">
             <div class="card-notation">{{ item.step.nuclide.notation }}</div>
-            <div class="card-hl">{{ halfLifeDisplay(item.step) }}</div>
+            <div
+              class="card-hl"
+              :class="{ 'is-infinite-half-life': item.step.nuclide_is_stable }">
+              {{ halfLifeDisplay(item.step) }}
+            </div>
           </div>
 
           <div v-else-if="item.kind === 'connector'" class="connector">
             <div class="connector-stem"></div>
-            <div class="connector-label" v-if="item.label">{{ item.label }}</div>
+            <div class="connector-label" v-if="item.label">
+              {{ item.label }}
+            </div>
             <div class="connector-arrow">&#8595;</div>
           </div>
 
           <!-- Nested fission in linear segment (rare); keep old single-column fan -->
-          <div v-else-if="item.kind === 'fission-split'" class="fission-split fission-split-inline">
+          <div
+            v-else-if="item.kind === 'fission-split'"
+            class="fission-split fission-split-inline">
             <div class="fan-head">
               <div class="fan-stem"></div>
               <div class="fan-label">{{ item.label }}</div>
@@ -304,11 +343,20 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
                   unfollowed: !item.followedIsHeavy,
                   active: item.isActive && item.followedIsHeavy,
                 }"
-                @click="onFissionFragClick(item.step.index, 'heavy')"
-              >
+                @click="onFissionFragClick(item.step.index, 'heavy')">
                 <div class="frag-tag">heavy</div>
-                <div class="card-notation">{{ item.step.detail?.heavy_fragment?.notation }}</div>
-                <div class="card-hl" v-if="item.step.detail?.heavy_fragment">{{ fragHalfLifeDisplay(item.step.detail.heavy_fragment) }}</div>
+                <div class="card-notation">
+                  {{ item.step.detail?.heavy_fragment?.notation }}
+                </div>
+                <div
+                  class="card-hl"
+                  :class="{
+                    'is-infinite-half-life':
+                      item.step.detail.heavy_fragment.half_life_s === null,
+                  }"
+                  v-if="item.step.detail?.heavy_fragment">
+                  {{ fragHalfLifeDisplay(item.step.detail.heavy_fragment) }}
+                </div>
               </div>
               <div
                 class="frag-card"
@@ -317,14 +365,25 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
                   unfollowed: item.followedIsHeavy,
                   active: item.isActive && !item.followedIsHeavy,
                 }"
-                @click="onFissionFragClick(item.step.index, 'light')"
-              >
+                @click="onFissionFragClick(item.step.index, 'light')">
                 <div class="frag-tag">light</div>
-                <div class="card-notation">{{ item.step.detail?.light_fragment?.notation }}</div>
-                <div class="card-hl" v-if="item.step.detail?.light_fragment">{{ fragHalfLifeDisplay(item.step.detail.light_fragment) }}</div>
+                <div class="card-notation">
+                  {{ item.step.detail?.light_fragment?.notation }}
+                </div>
+                <div
+                  class="card-hl"
+                  :class="{
+                    'is-infinite-half-life':
+                      item.step.detail.light_fragment.half_life_s === null,
+                  }"
+                  v-if="item.step.detail?.light_fragment">
+                  {{ fragHalfLifeDisplay(item.step.detail.light_fragment) }}
+                </div>
               </div>
             </div>
-            <div class="frag-continuation" :class="{ 'is-heavy': item.followedIsHeavy }">
+            <div
+              class="frag-continuation"
+              :class="{ 'is-heavy': item.followedIsHeavy }">
               <div class="continuation-stem"></div>
             </div>
           </div>
@@ -332,7 +391,9 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
       </template>
 
       <!-- Standalone fission row before parallel legs -->
-      <div v-else-if="block.kind === 'fission'" class="fission-split fission-split-parallel">
+      <div
+        v-else-if="block.kind === 'fission'"
+        class="fission-split fission-split-parallel">
         <div class="fan-head">
           <div class="fan-stem"></div>
           <div class="fan-label">{{ block.label }}</div>
@@ -349,11 +410,20 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
               unfollowed: !block.followedIsHeavy,
               active: block.isActive && block.followedIsHeavy,
             }"
-            @click="onFissionFragClick(block.step.index, 'heavy')"
-          >
+            @click="onFissionFragClick(block.step.index, 'heavy')">
             <div class="frag-tag">heavy</div>
-            <div class="card-notation">{{ block.step.detail?.heavy_fragment?.notation }}</div>
-            <div class="card-hl" v-if="block.step.detail?.heavy_fragment">{{ fragHalfLifeDisplay(block.step.detail.heavy_fragment) }}</div>
+            <div class="card-notation">
+              {{ block.step.detail?.heavy_fragment?.notation }}
+            </div>
+            <div
+              class="card-hl"
+              :class="{
+                'is-infinite-half-life':
+                  block.step.detail.heavy_fragment.half_life_s === null,
+              }"
+              v-if="block.step.detail?.heavy_fragment">
+              {{ fragHalfLifeDisplay(block.step.detail.heavy_fragment) }}
+            </div>
           </div>
           <div
             class="frag-card"
@@ -362,11 +432,20 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
               unfollowed: block.followedIsHeavy,
               active: block.isActive && !block.followedIsHeavy,
             }"
-            @click="onFissionFragClick(block.step.index, 'light')"
-          >
+            @click="onFissionFragClick(block.step.index, 'light')">
             <div class="frag-tag">light</div>
-            <div class="card-notation">{{ block.step.detail?.light_fragment?.notation }}</div>
-            <div class="card-hl" v-if="block.step.detail?.light_fragment">{{ fragHalfLifeDisplay(block.step.detail.light_fragment) }}</div>
+            <div class="card-notation">
+              {{ block.step.detail?.light_fragment?.notation }}
+            </div>
+            <div
+              class="card-hl"
+              :class="{
+                'is-infinite-half-life':
+                  block.step.detail.light_fragment.half_life_s === null,
+              }"
+              v-if="block.step.detail?.light_fragment">
+              {{ fragHalfLifeDisplay(block.step.detail.light_fragment) }}
+            </div>
           </div>
         </div>
       </div>
@@ -382,14 +461,21 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
                 active: item.isActive,
                 stable: item.step.nuclide_is_stable,
               }"
-              @click="onLegCardClick('heavy', item.step)"
-            >
+              @click="onLegCardClick('heavy', item.step)">
               <div class="card-notation">{{ item.step.nuclide.notation }}</div>
-              <div class="card-hl">{{ halfLifeDisplay(item.step) }}</div>
+              <div
+                class="card-hl"
+                :class="{
+                  'is-infinite-half-life': item.step.nuclide_is_stable,
+                }">
+                {{ halfLifeDisplay(item.step) }}
+              </div>
             </div>
             <div v-else-if="item.kind === 'connector'" class="connector">
               <div class="connector-stem"></div>
-              <div class="connector-label" v-if="item.label">{{ item.label }}</div>
+              <div class="connector-label" v-if="item.label">
+                {{ item.label }}
+              </div>
               <div class="connector-arrow">&#8595;</div>
             </div>
           </template>
@@ -404,14 +490,21 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
                 active: item.isActive,
                 stable: item.step.nuclide_is_stable,
               }"
-              @click="onLegCardClick('light', item.step)"
-            >
+              @click="onLegCardClick('light', item.step)">
               <div class="card-notation">{{ item.step.nuclide.notation }}</div>
-              <div class="card-hl">{{ halfLifeDisplay(item.step) }}</div>
+              <div
+                class="card-hl"
+                :class="{
+                  'is-infinite-half-life': item.step.nuclide_is_stable,
+                }">
+                {{ halfLifeDisplay(item.step) }}
+              </div>
             </div>
             <div v-else-if="item.kind === 'connector'" class="connector">
               <div class="connector-stem"></div>
-              <div class="connector-label" v-if="item.label">{{ item.label }}</div>
+              <div class="connector-label" v-if="item.label">
+                {{ item.label }}
+              </div>
               <div class="connector-arrow">&#8595;</div>
             </div>
           </template>
@@ -443,7 +536,9 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
   border-radius: 8px;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
 }
 .iso-card:hover {
   border-color: #58a6ff;
@@ -481,6 +576,10 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
 }
 .iso-card.stable .card-hl {
   color: #3fb95080;
+}
+.card-hl.is-infinite-half-life {
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 /* ── Straight connector ── */
@@ -563,7 +662,9 @@ function onFissionFragClick(stepIndex: number, leg?: "light" | "heavy") {
   border-radius: 8px;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
 }
 .frag-card:hover {
   border-color: #58a6ff;

@@ -1,8 +1,8 @@
 //! WASM bindings for the nuclear simulation engine.
 
 use nuclear_sim::{
-    build_extracted_database, DecayMode, NeutronEnergy, SimEvent, Simulation as CoreSim, Stability,
-    Nuclide,
+    build_extracted_database, DecayMode, NeutronEnergy, Nuclide, SimEvent, Simulation as CoreSim,
+    Stability,
 };
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -100,18 +100,26 @@ fn decay_mode_name(mode: &DecayMode) -> &'static str {
 
 fn nuclide_timing(sim: &CoreSim, nuclide: &Nuclide) -> (bool, bool, Option<f64>) {
     sim.lookup(nuclide).map_or((false, false, None), |d| {
-        (
-            d.stability == Stability::Stable,
-            true,
-            d.half_life_s,
-        )
+        let effectively_stable = d.stability == Stability::Stable || d.decay_modes.is_empty();
+        let half_life_s = if effectively_stable { None } else { d.half_life_s };
+        (effectively_stable, true, half_life_s)
     })
 }
 
 fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
+    event_to_step_with_branch(index, event, sim, None)
+}
+
+fn event_to_step_with_branch(
+    index: usize,
+    event: &SimEvent,
+    sim: &CoreSim,
+    following_heavy: Option<bool>,
+) -> StepJs {
     match event {
         SimEvent::Start { nuclide } => {
-            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, nuclide);
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) =
+                nuclide_timing(sim, nuclide);
             StepJs {
                 index,
                 event_type: "start".into(),
@@ -128,7 +136,8 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
             energy,
             compound,
         } => {
-            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, compound);
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) =
+                nuclide_timing(sim, compound);
             StepJs {
                 index,
                 event_type: "neutron-absorbed".into(),
@@ -173,7 +182,13 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
                 NeutronEnergy::Slow => "slow",
                 NeutronEnergy::Fast => "fast",
             };
-            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, heavy);
+            let displayed_fragment = if following_heavy.unwrap_or(true) {
+                heavy
+            } else {
+                light
+            };
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) =
+                nuclide_timing(sim, displayed_fragment);
             StepJs {
                 index,
                 event_type: "fission".into(),
@@ -185,7 +200,7 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
                     heavy.notation(),
                     neutrons_released
                 ),
-                nuclide: NuclideJs::from_nuclide(heavy),
+                nuclide: NuclideJs::from_nuclide(displayed_fragment),
                 nuclide_is_stable,
                 nuclide_in_database,
                 nuclide_half_life_s,
@@ -205,7 +220,8 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
             mode,
             daughter,
         } => {
-            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, daughter);
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) =
+                nuclide_timing(sim, daughter);
             StepJs {
                 index,
                 event_type: "decay".into(),
@@ -231,7 +247,8 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
             }
         }
         SimEvent::Stable { nuclide } => {
-            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, nuclide);
+            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) =
+                nuclide_timing(sim, nuclide);
             StepJs {
                 index,
                 event_type: "stable".into(),
@@ -246,22 +263,29 @@ fn event_to_step(index: usize, event: &SimEvent, sim: &CoreSim) -> StepJs {
     }
 }
 
-fn build_sim_state(sim: &CoreSim, following_heavy: bool) -> SimStateJs {
-    let event = sim.current_event().expect("sim should have state");
-    let mut step = event_to_step(sim.cursor(), event, sim);
+fn branch_following_heavy(sim: &CoreSim) -> bool {
+    sim.fission_branches()
+        .first()
+        .map(|b| !b.following_light())
+        .unwrap_or(true)
+}
 
-    // When the cursor is on the fission event and we're following the light
-    // fragment, override the displayed nuclide to the light fragment so the
-    // highlighted isotope reflects the branch the user is actually on.
-    if !following_heavy {
-        if let SimEvent::Fission { light, .. } = event {
-            let (nuclide_is_stable, nuclide_in_database, nuclide_half_life_s) = nuclide_timing(sim, light);
-            step.nuclide = NuclideJs::from_nuclide(light);
-            step.nuclide_is_stable = nuclide_is_stable;
-            step.nuclide_in_database = nuclide_in_database;
-            step.nuclide_half_life_s = nuclide_half_life_s;
-        }
-    }
+fn following_heavy_at_step(sim: &CoreSim, step_index: usize) -> Option<bool> {
+    sim.fission_branches()
+        .iter()
+        .find(|b| b.fission_step == step_index)
+        .map(|b| !b.following_light())
+}
+
+fn build_sim_state(sim: &CoreSim) -> SimStateJs {
+    let following_heavy = branch_following_heavy(sim);
+    let event = sim.current_event().expect("sim should have state");
+    let step = event_to_step_with_branch(
+        sim.cursor(),
+        event,
+        sim,
+        following_heavy_at_step(sim, sim.cursor()),
+    );
 
     SimStateJs {
         cursor: sim.cursor(),
@@ -276,22 +300,22 @@ fn build_sim_state(sim: &CoreSim, following_heavy: bool) -> SimStateJs {
 }
 
 fn all_steps_vec(sim: &CoreSim) -> Vec<StepJs> {
-    sim
-        .steps()
+    sim.steps()
         .iter()
         .enumerate()
-        .map(|(i, e)| event_to_step(i, e, sim))
+        .map(|(i, e)| event_to_step_with_branch(i, e, sim, following_heavy_at_step(sim, i)))
         .collect()
 }
 
 fn lookup_nuclide_data(sim: &CoreSim, z: u16, n: u16) -> Option<NuclideDataJs> {
     let nuclide = Nuclide::try_new(z, n).ok()?;
     let data = sim.lookup(&nuclide)?;
+    let effectively_stable = data.stability == Stability::Stable || data.decay_modes.is_empty();
     Some(NuclideDataJs {
         notation: nuclide.notation(),
-        is_stable: data.stability == Stability::Stable,
+        is_stable: effectively_stable,
         is_fissile: data.is_fissile(),
-        half_life_s: data.half_life_s,
+        half_life_s: if effectively_stable { None } else { data.half_life_s },
         decay_modes: data
             .decay_modes
             .iter()
@@ -367,11 +391,36 @@ fn parse_fission_fragment(fragment: &str) -> Result<bool, &'static str> {
 
 fn presets() -> Vec<PresetJs> {
     vec![
-        PresetJs { z: 92, n: 143, notation: "U-235".into(), label: "Uranium-235 (fissile)".into() },
-        PresetJs { z: 92, n: 146, notation: "U-238".into(), label: "Uranium-238".into() },
-        PresetJs { z: 94, n: 145, notation: "Pu-239".into(), label: "Plutonium-239 (fissile)".into() },
-        PresetJs { z: 27, n: 33, notation: "Co-60".into(), label: "Cobalt-60 (gamma source)".into() },
-        PresetJs { z: 6, n: 8, notation: "C-14".into(), label: "Carbon-14 (carbon dating)".into() },
+        PresetJs {
+            z: 92,
+            n: 143,
+            notation: "U-235".into(),
+            label: "Uranium-235 (fissile)".into(),
+        },
+        PresetJs {
+            z: 92,
+            n: 146,
+            notation: "U-238".into(),
+            label: "Uranium-238".into(),
+        },
+        PresetJs {
+            z: 94,
+            n: 145,
+            notation: "Pu-239".into(),
+            label: "Plutonium-239 (fissile)".into(),
+        },
+        PresetJs {
+            z: 27,
+            n: 33,
+            notation: "Co-60".into(),
+            label: "Cobalt-60 (gamma source)".into(),
+        },
+        PresetJs {
+            z: 6,
+            n: 8,
+            notation: "C-14".into(),
+            label: "Carbon-14 (carbon dating)".into(),
+        },
     ]
 }
 
@@ -382,7 +431,6 @@ fn presets() -> Vec<PresetJs> {
 #[wasm_bindgen]
 pub struct SimSession {
     sim: CoreSim,
-    following_heavy: bool,
 }
 
 #[wasm_bindgen]
@@ -391,7 +439,6 @@ impl SimSession {
     pub fn new() -> Self {
         Self {
             sim: CoreSim::new(build_extracted_database()),
-            following_heavy: true,
         }
     }
 
@@ -402,7 +449,6 @@ impl SimSession {
 
     /// Set the starting isotope by Z and N.
     pub fn set_isotope(&mut self, z: u16, n: u16) -> Result<(), JsValue> {
-        self.following_heavy = true;
         self.sim
             .set_isotope(z, n)
             .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -442,7 +488,6 @@ impl SimSession {
     /// fragment: "light" or "heavy"
     pub fn switch_branch(&mut self, fragment: &str) -> Result<(), JsValue> {
         let follow_light = parse_fission_fragment(fragment).map_err(JsValue::from_str)?;
-        self.following_heavy = !follow_light;
         self.sim
             .switch_branch(0, follow_light)
             .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -452,7 +497,6 @@ impl SimSession {
     /// fragment: "light" or "heavy"
     pub fn switch_branch_step(&mut self, fragment: &str) -> Result<(), JsValue> {
         let follow_light = parse_fission_fragment(fragment).map_err(JsValue::from_str)?;
-        self.following_heavy = !follow_light;
         self.sim
             .switch_branch_step(0, follow_light)
             .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -484,7 +528,7 @@ impl SimSession {
 
     /// Get the full simulation state (current step, cursor, etc.).
     pub fn state(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&build_sim_state(&self.sim, self.following_heavy)).unwrap()
+        serde_wasm_bindgen::to_value(&build_sim_state(&self.sim)).unwrap()
     }
 
     /// Get all steps as an array (for the chain summary).
@@ -563,7 +607,7 @@ impl SimSession {
 
     #[cfg(test)]
     pub(crate) fn state_snapshot(&self) -> SimStateJs {
-        build_sim_state(&self.sim, self.following_heavy)
+        build_sim_state(&self.sim)
     }
 
     #[cfg(test)]
@@ -586,6 +630,11 @@ mod tests {
         CoreSim::new(build_extracted_database())
     }
 
+    fn assert_same_nuclide(left: &NuclideJs, right: &NuclideJs) {
+        assert_eq!((left.z, left.n, left.a), (right.z, right.n, right.a));
+        assert_eq!(left.notation, right.notation);
+    }
+
     #[test]
     fn sim_version_matches_core() {
         assert_eq!(sim_version(), nuclear_sim::version());
@@ -596,7 +645,10 @@ mod tests {
         assert_eq!(decay_mode_name(&DecayMode::Alpha), "alpha");
         assert_eq!(decay_mode_name(&DecayMode::BetaMinus), "beta-minus");
         assert_eq!(decay_mode_name(&DecayMode::BetaPlus), "beta-plus");
-        assert_eq!(decay_mode_name(&DecayMode::ElectronCapture), "electron-capture");
+        assert_eq!(
+            decay_mode_name(&DecayMode::ElectronCapture),
+            "electron-capture"
+        );
         assert_eq!(
             decay_mode_name(&DecayMode::IsomericTransition),
             "isomeric-transition"
@@ -635,10 +687,7 @@ mod tests {
         let sim = test_sim();
         let target = Nuclide::try_new(92, 143).unwrap();
         let compound = Nuclide::try_new(92, 144).unwrap();
-        for (energy, label) in [
-            (NeutronEnergy::Slow, "slow"),
-            (NeutronEnergy::Fast, "fast"),
-        ] {
+        for (energy, label) in [(NeutronEnergy::Slow, "slow"), (NeutronEnergy::Fast, "fast")] {
             let step = event_to_step(
                 1,
                 &SimEvent::NeutronAbsorbed {
@@ -651,7 +700,10 @@ mod tests {
             assert_eq!(step.event_type, "neutron-absorbed");
             assert_eq!(step.nuclide, NuclideJs::from_nuclide(&compound));
             let d = step.detail.as_ref().unwrap();
-            assert_eq!(d.target.as_ref().unwrap(), &NuclideJs::from_nuclide(&target));
+            assert_eq!(
+                d.target.as_ref().unwrap(),
+                &NuclideJs::from_nuclide(&target)
+            );
             assert_eq!(d.energy.as_deref(), Some(label));
             assert!(d.light_fragment.is_none() && d.heavy_fragment.is_none());
         }
@@ -677,14 +729,17 @@ mod tests {
         assert_eq!(step.event_type, "fission");
         assert_eq!(step.nuclide, NuclideJs::from_nuclide(&heavy));
         let d = step.detail.as_ref().unwrap();
-        assert_eq!(d.parent.as_ref().unwrap(), &NuclideJs::from_nuclide(&parent));
         assert_eq!(
-            d.light_fragment.as_ref().unwrap(),
-            &NuclideJs::from_nuclide(&light)
+            d.parent.as_ref().unwrap(),
+            &NuclideJs::from_nuclide(&parent)
         );
-        assert_eq!(
+        assert_same_nuclide(
+            d.light_fragment.as_ref().unwrap(),
+            &NuclideJs::from_nuclide(&light),
+        );
+        assert_same_nuclide(
             d.heavy_fragment.as_ref().unwrap(),
-            &NuclideJs::from_nuclide(&heavy)
+            &NuclideJs::from_nuclide(&heavy),
         );
         assert_eq!(d.neutrons_released, Some(2));
     }
@@ -706,7 +761,10 @@ mod tests {
         assert_eq!(step.event_type, "decay");
         assert_eq!(step.nuclide, NuclideJs::from_nuclide(&daughter));
         let d = step.detail.as_ref().unwrap();
-        assert_eq!(d.parent.as_ref().unwrap(), &NuclideJs::from_nuclide(&parent));
+        assert_eq!(
+            d.parent.as_ref().unwrap(),
+            &NuclideJs::from_nuclide(&parent)
+        );
         assert_eq!(d.decay_mode.as_deref(), Some("beta-minus"));
     }
 
@@ -804,12 +862,83 @@ mod tests {
     }
 
     #[test]
+    fn fission_step_serialization_tracks_followed_fragment() {
+        let mut s = SimSession::new();
+        s.set_isotope(92, 143).unwrap();
+        s.fire_neutron_step("slow").unwrap();
+        s.switch_branch_step("light").unwrap();
+
+        let state = s.state_snapshot();
+        assert!(!state.following_heavy);
+
+        let steps = s.steps_snapshot();
+        let fission = steps
+            .iter()
+            .find(|step| step.event_type == "fission")
+            .expect("U-235 should fission");
+        assert_same_nuclide(&fission.nuclide, &state.current_step.nuclide);
+        assert_same_nuclide(
+            fission
+                .detail
+                .as_ref()
+                .unwrap()
+                .light_fragment
+                .as_ref()
+                .unwrap(),
+            &state.current_step.nuclide,
+        );
+    }
+
+    #[test]
+    fn firing_neutron_resets_followed_fragment_to_new_fission_default() {
+        let mut s = SimSession::new();
+        s.set_isotope(92, 143).unwrap();
+        s.fire_neutron_step("slow").unwrap();
+        s.switch_branch_step("light").unwrap();
+        assert!(!s.state_snapshot().following_heavy);
+
+        s.go_to_step(0).unwrap();
+        s.fire_neutron_step("slow").unwrap();
+
+        let state = s.state_snapshot();
+        assert!(state.following_heavy);
+        let heavy = state
+            .current_step
+            .detail
+            .as_ref()
+            .unwrap()
+            .heavy_fragment
+            .as_ref()
+            .unwrap();
+        assert_same_nuclide(heavy, &state.current_step.nuclide);
+    }
+
+    #[test]
     fn lookup_c14_returns_decay_modes_and_notation() {
         let s = SimSession::new();
         let data = s.lookup_data(6, 8).expect("C-14 in stub db");
         assert_eq!(data.notation, "C-14");
         assert!(!data.is_stable);
         assert!(data.decay_modes.contains(&"beta-minus".to_string()));
+    }
+
+    #[test]
+    fn lookup_nuclide_with_no_decay_modes_is_effectively_stable() {
+        let s = SimSession::new();
+        let data = s.lookup_data(54, 80).expect("Xe-134 in extracted db");
+        assert_eq!(data.notation, "Xe-134");
+        assert!(data.is_stable);
+        assert!(data.half_life_s.is_none());
+        assert!(data.decay_modes.is_empty());
+    }
+
+    #[test]
+    fn step_for_nuclide_with_no_decay_modes_is_effectively_stable() {
+        let sim = test_sim();
+        let xe134 = Nuclide::try_new(54, 80).unwrap();
+        let step = event_to_step(0, &SimEvent::Start { nuclide: xe134 }, &sim);
+        assert!(step.nuclide_is_stable);
+        assert!(step.nuclide_half_life_s.is_none());
     }
 
     #[test]

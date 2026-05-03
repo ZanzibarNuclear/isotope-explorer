@@ -80,7 +80,10 @@ function chainStepMeta(step: StepInfo): string {
       <span class="chain-label">{{ step.nuclide.notation }}</span>
       <span
         class="chain-meta"
-        :class="step.event_type === 'decay' && step.detail?.decay_mode ? 'is-decay-mode' : 'is-half-life'"
+        :class="[
+          step.event_type === 'decay' && step.detail?.decay_mode ? 'is-decay-mode' : 'is-half-life',
+          step.nuclide_is_stable ? 'is-infinite-half-life' : '',
+        ]"
         :title="
           step.event_type === 'decay' && step.detail?.decay_mode
             ? 'Decay mode'
@@ -157,5 +160,9 @@ function chainStepMeta(step: StepInfo): string {
 }
 .chain-step.stable .chain-meta.is-half-life {
   color: #3fb95099;
+}
+.chain-meta.is-infinite-half-life {
+  font-size: 1.05rem;
+  line-height: 1;
 }
 </style>

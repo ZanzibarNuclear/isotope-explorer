@@ -2,7 +2,7 @@
   "name": "nuclear-sim-wasm",
   "type": "module",
   "description": "WASM bindings for nuclear-sim",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "files": [
     "nuclear_sim_wasm_bg.wasm",
     "nuclear_sim_wasm.js",

@@ -1,25 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from "vue";
+import { onMounted, ref } from "vue";
 import type { SimState, StepInfo } from "@wasm/nuclear_sim_wasm.js";
 import PeriodicTablePicker from "./components/PeriodicTablePicker.vue";
 import QuickPickList from "./components/QuickPickList.vue";
 import ChainView from "./components/ChainView.vue";
 import CardChainView from "./components/CardChainView.vue";
 import NuclideGraphView from "./components/NuclideGraphView.vue";
-import { PERIODIC_TABLE } from "./data/periodic-table-layout";
-
-const ELEMENT_NAME_BY_Z = new Map(PERIODIC_TABLE.map(e => [e.z, e.name]));
-
-function elementName(z: number): string {
-  return ELEMENT_NAME_BY_Z.get(z) ?? "Unknown";
-}
+import ToolPanel from "./components/ToolPanel.vue";
 
 type PickerView = "table" | "quick";
 const pickerView = ref<PickerView>("quick");
 const pickerOpen = ref(true);
 
 type ChainViewMode = "list" | "cards" | "graph";
-const chainViewMode = ref<ChainViewMode>("cards");
+const chainViewMode = ref<ChainViewMode>("graph");
 
 const stepByStep = ref(true);
 
@@ -37,18 +31,11 @@ interface FissionTails {
 }
 const fissionTails = ref<FissionTails | undefined>(undefined);
 
-const canStepBack = computed(() => simState.value && simState.value.cursor > 0);
-const canStepForward = computed(
-  () => simState.value && simState.value.cursor < simState.value.step_count - 1
-);
-const canFire = computed(() => simState.value?.can_fire ?? false);
-const canDecay = computed(() => simState.value?.can_decay ?? false);
-
 function refreshState() {
   if (!session.value) return;
   simState.value = session.value.state();
   allSteps.value = session.value.all_steps();
-  if (stepByStep.value && simState.value?.has_fission_branch) {
+  if (simState.value?.has_fission_branch) {
     fissionTails.value = session.value.fission_tails() ?? undefined;
   } else {
     fissionTails.value = undefined;
@@ -181,7 +168,7 @@ onMounted(async () => {
   <div class="app">
     <header class="header">
       <h1>Isotope Explorer</h1>
-      <p class="subtitle">Fire neutrons at nuclei and see what happens</p>
+      <p class="subtitle">Pick an isotope, fire neutrons, induce decay, and see what happens</p>
     </header>
 
     <!-- Isotope picker (full width) -->
@@ -198,30 +185,37 @@ onMounted(async () => {
       <template v-else>
         <h2 class="picker-heading">Choose an Isotope</h2>
         <div class="picker-toggle">
-          <button class="toggle-btn" :class="{ active: pickerView === 'quick' }" @click="pickerView = 'quick'">
-            Quick Pick
-          </button>
-          <button class="toggle-btn" :class="{ active: pickerView === 'table' }" @click="pickerView = 'table'">
-            Periodic Table
-          </button>
+          <div class="picker-tabs">
+            <button class="toggle-btn" :class="{ active: pickerView === 'quick' }" @click="pickerView = 'quick'">
+              Quick Pick
+            </button>
+            <button class="toggle-btn" :class="{ active: pickerView === 'table' }" @click="pickerView = 'table'">
+              Periodic Table
+            </button>
+          </div>
+          <div class="isotope-legend" aria-label="Isotope color legend">
+            <span class="legend-item"><span class="legend-swatch stable"></span>Stable</span>
+            <span class="legend-item"><span class="legend-swatch fissile"></span>Fissile</span>
+            <span class="legend-item"><span class="legend-swatch radioactive"></span>Radioactive</span>
+          </div>
         </div>
         <PeriodicTablePicker v-if="pickerView === 'table'" :session="session" @select-isotope="onSelectIsotope" />
         <QuickPickList v-else :session="session" @select-isotope="onSelectIsotope" />
       </template>
     </section>
 
-    <main class="main">
+    <main v-if="!pickerOpen" class="main">
       <!-- Left: chain visualization -->
       <section class="viewport" aria-label="Reaction chain">
         <div class="viewport-header">
           <h2 class="panel-title">Action Viewer</h2>
           <div class="chain-view-toggle" v-if="simState">
+            <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'graph' }"
+              @click="chainViewMode = 'graph'">Graph</button>
             <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'cards' }"
               @click="chainViewMode = 'cards'">Cards</button>
             <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'list' }"
               @click="chainViewMode = 'list'">List</button>
-            <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'graph' }"
-              @click="chainViewMode = 'graph'">Graph</button>
           </div>
         </div>
         <div v-if="!simState" class="viewport-placeholder">
@@ -230,115 +224,44 @@ onMounted(async () => {
         <ChainView v-else-if="chainViewMode === 'list'" :steps="allSteps" :cursor="simState.cursor"
           @go-to-step="goToStep" />
         <NuclideGraphView v-else-if="chainViewMode === 'graph'" :steps="allSteps" :cursor="simState.cursor"
-          @go-to-step="goToStep" />
+          :fission-tails="fissionTails" @go-to-step="goToStep" />
         <CardChainView v-else :session="session" :steps="allSteps" :cursor="simState.cursor"
           :following-heavy="simState.following_heavy" :step-by-step="stepByStep" :fission-tails="fissionTails"
           @go-to-step="goToStep" @go-to-branch-step="onGoToBranchStep" @switch-fragment="onSwitchFragment" />
       </section>
 
-      <!-- Right: controls and details -->
-      <aside class="panel" aria-label="Controls">
-        <h2 class="panel-title">Controls</h2>
-        <!-- Error display -->
-        <p v-if="wasmError" class="error">{{ wasmError }}</p>
-
-        <!-- Mode toggle (always visible once session ready) -->
-        <div class="section" v-if="session">
-          <h2>Mode</h2>
-          <div class="mode-toggle">
-            <button class="mode-btn" :class="{ active: stepByStep }" @click="stepByStep = true">
-              Step-by-step
-            </button>
-            <button class="mode-btn" :class="{ active: !stepByStep }" @click="stepByStep = false">
-              Auto-chain
-            </button>
-          </div>
-        </div>
-
-        <!-- Action controls -->
-        <div class="section" v-if="simState">
-          <h2>Actions</h2>
-          <div class="action-btns">
-            <button class="fire-btn slow" :disabled="!canFire" @click="fireNeutron('slow')">
-              Thermal
-            </button>
-            <button class="fire-btn fast" :disabled="!canFire" @click="fireNeutron('fast')">
-              Fast
-            </button>
-            <button class="fire-btn decay" :disabled="!canDecay" @click="induceDecay">
-              Induce Decay
-            </button>
-          </div>
-        </div>
-
-        <!-- Step navigator (all-at-once mode only) -->
-        <div class="section" v-if="!stepByStep && simState && simState.step_count > 1">
-          <h2>Navigate</h2>
-          <div class="nav-row">
-            <button class="nav-btn" :disabled="!canStepBack" @click="stepBack">&larr; Back</button>
-            <span class="step-counter">
-              Step {{ simState.cursor + 1 }} of {{ simState.step_count }}
-            </span>
-            <button class="nav-btn" :disabled="!canStepForward" @click="stepForward">
-              Forward &rarr;
-            </button>
-          </div>
-        </div>
-
-        <!-- Fission branch selector -->
-        <div class="section" v-if="simState?.has_fission_branch">
-          <h2>Fission Fragment</h2>
-          <div class="branch-btns">
-            <button class="branch-btn" :class="{ selected: simState.following_heavy }" @click="switchBranch('heavy')">
-              Heavy fragment
-            </button>
-            <button class="branch-btn" :class="{ selected: !simState.following_heavy }" @click="switchBranch('light')">
-              Light fragment
-            </button>
-          </div>
-        </div>
-
-        <!-- Current step detail -->
-        <div class="section" v-if="simState">
-          <h2>Highlighted Isotope</h2>
-          <div class="detail-card" :class="{ unknown: !simState.current_step.nuclide_in_database }">
-            <div class="detail-nuclide">{{ simState.current_step.nuclide.notation }}</div>
-            <div class="detail-element-name">{{ elementName(simState.current_step.nuclide.z) }}</div>
-            <div v-if="!simState.current_step.nuclide_in_database" class="detail-unknown">?? No data available for this
-              nuclide</div>
-            <div class="detail-desc">{{ simState.current_step.description }}</div>
-            <dl class="detail-props">
-              <dt>Type</dt>
-              <dd>{{ simState.current_step.event_type }}</dd>
-              <dt>Z / N / A</dt>
-              <dd>
-                {{ simState.current_step.nuclide.z }} /
-                {{ simState.current_step.nuclide.n }} /
-                {{ simState.current_step.nuclide.a }}
-              </dd>
-              <template v-if="simState.current_step.detail?.decay_mode">
-                <dt>Decay mode</dt>
-                <dd>{{ simState.current_step.detail.decay_mode }}</dd>
-              </template>
-              <template v-if="simState.current_step.detail?.neutrons_released">
-                <dt>Free neutrons</dt>
-                <dd>{{ simState.current_step.detail.neutrons_released }}</dd>
-              </template>
-            </dl>
-          </div>
-        </div>
-
-        <p class="version">sim v{{ wasmVersion }}</p>
-      </aside>
+      <ToolPanel
+        v-model:step-by-step="stepByStep"
+        :session-ready="Boolean(session)"
+        :sim-state="simState"
+        :wasm-error="wasmError"
+        :wasm-version="wasmVersion"
+        @fire-neutron="fireNeutron"
+        @induce-decay="induceDecay"
+        @step-back="stepBack"
+        @step-forward="stepForward"
+        @switch-branch="switchBranch"
+      />
     </main>
   </div>
 </template>
 
+<style>
+html,
+body,
+#app {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+</style>
+
 <style scoped>
 .app {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: #0f1419;
   color: #e6edf3;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -389,6 +312,7 @@ onMounted(async () => {
 /* -- Viewport / chain -- */
 .viewport {
   padding: 0;
+  min-width: 0;
   overflow-y: auto;
 }
 
@@ -440,34 +364,6 @@ onMounted(async () => {
   color: #e6edf3;
   border-color: #58a6ff;
   background: #1f6feb18;
-}
-
-/* -- Panel -- */
-.panel {
-  padding: 0 1.25rem 1rem;
-  border-left: 1px solid #30363d;
-  background: #161b22;
-  overflow-y: auto;
-}
-
-@media (max-width: 720px) {
-  .panel {
-    border-left: none;
-    border-top: 1px solid #30363d;
-  }
-}
-
-.section {
-  margin-bottom: 1.25rem;
-}
-
-.section h2 {
-  margin: 0 0 0.5rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #8b949e;
 }
 
 /* -- Picker area -- */
@@ -526,9 +422,17 @@ onMounted(async () => {
 
 .picker-toggle {
   display: flex;
-  gap: 2px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 0.5rem 1.25rem 0;
+  border-bottom: 1px solid #30363d;
   background: #0d1117;
+}
+
+.picker-tabs {
+  display: flex;
+  gap: 2px;
 }
 
 .toggle-btn {
@@ -553,212 +457,55 @@ onMounted(async () => {
   background: #21262d;
   color: #e6edf3;
   border-color: #30363d;
+  border-bottom-color: #21262d;
+  margin-bottom: -1px;
+  padding-bottom: calc(0.3rem + 1px);
 }
 
-/* -- Action buttons -- */
-.action-btns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.fire-btn {
-  flex: 1;
-  min-width: 7rem;
-  padding: 0.5rem;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-
-.fire-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.fire-btn.slow {
-  background: #1f6feb;
-  color: #fff;
-}
-
-.fire-btn.slow:not(:disabled):hover {
-  background: #388bfd;
-}
-
-.fire-btn.fast {
-  background: #f0883e;
-  color: #fff;
-}
-
-.fire-btn.fast:not(:disabled):hover {
-  background: #f39c55;
-}
-
-.fire-btn.decay {
-  background: #8957e5;
-  color: #fff;
-}
-
-.fire-btn.decay:not(:disabled):hover {
-  background: #a371f7;
-}
-
-/* -- Mode toggle -- */
-.mode-toggle {
-  display: flex;
-  gap: 2px;
-}
-
-.mode-btn {
-  flex: 1;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  background: #0d1117;
-  color: #6e7681;
-  font-size: 0.8rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
-}
-
-.mode-btn:hover {
-  color: #e6edf3;
-  border-color: #484f58;
-}
-
-.mode-btn.active {
-  background: #1f6feb18;
-  color: #58a6ff;
-  border-color: #1f6feb;
-}
-
-/* -- Navigation -- */
-.nav-row {
+.isotope-legend {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-}
-
-.nav-btn {
-  padding: 0.35rem 0.7rem;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  background: #21262d;
-  color: #e6edf3;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.nav-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.nav-btn:not(:disabled):hover {
-  border-color: #58a6ff;
-}
-
-.step-counter {
-  flex: 1;
-  text-align: center;
-  font-size: 0.85rem;
+  gap: 0.9rem;
+  padding-bottom: 0.35rem;
   color: #8b949e;
-}
-
-/* -- Branch selector -- */
-.branch-btns {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.branch-btn {
-  flex: 1;
-  padding: 0.4rem;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  background: #21262d;
-  color: #e6edf3;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.branch-btn.selected {
-  border-color: #58a6ff;
-  background: #1f6feb33;
-}
-
-.branch-btn:hover {
-  border-color: #58a6ff;
-}
-
-/* -- Detail card -- */
-.detail-card {
-  background: #0d1117;
-  border: 1px solid #30363d;
-  border-radius: 8px;
-  padding: 0.75rem;
-}
-
-.detail-nuclide {
-  font-size: 1.4rem;
-  font-weight: 700;
-  margin-bottom: 0.1rem;
-}
-
-.detail-element-name {
-  font-size: 0.85rem;
-  color: #aaa;
-  margin-bottom: 0.25rem;
-}
-
-.detail-desc {
-  font-size: 0.85rem;
-  color: #8b949e;
-  margin-bottom: 0.6rem;
-}
-
-.detail-props {
-  margin: 0;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.25rem 0.75rem;
-  font-size: 0.825rem;
-}
-
-.detail-props dt {
-  color: #8b949e;
-}
-
-.detail-props dd {
-  margin: 0;
-}
-
-/* -- Unknown nuclide indicator -- */
-.detail-card.unknown {
-  border-color: #d29922;
-  border-style: dashed;
-}
-
-.detail-unknown {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #d29922;
-  margin-bottom: 0.4rem;
-}
-
-.error {
-  color: #f85149;
-  font-size: 0.875rem;
-  margin: 0 0 1rem;
-}
-
-.version {
-  margin: 1.5rem 0 0;
   font-size: 0.75rem;
-  color: #484f58;
 }
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.legend-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+  background: #8b949e;
+}
+
+.legend-swatch.stable {
+  background: #3fb950;
+}
+
+.legend-swatch.fissile {
+  background: #f0883e;
+}
+
+.legend-swatch.radioactive {
+  background: #8b949e;
+}
+
+@media (max-width: 640px) {
+  .picker-toggle {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .isotope-legend {
+    padding-bottom: 0;
+  }
+}
+
 </style>

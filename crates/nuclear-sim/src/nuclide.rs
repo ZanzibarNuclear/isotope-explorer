@@ -31,7 +31,7 @@ impl fmt::Display for NuclideError {
                 write!(f, "neutron number N={n} is outside 0..=200")
             }
             NuclideError::MassNumberOutOfRange { a } => {
-                write!(f, "mass number A={a} is outside 2..=300")
+                write!(f, "mass number A={a} is outside 1..=300")
             }
         }
     }
@@ -42,7 +42,7 @@ impl std::error::Error for NuclideError {}
 /// Bounds wide enough for known nuclides and a little headroom for tabulated data later.
 const Z_MAX: u16 = 118;
 const N_MAX: u16 = 200;
-const A_MIN: u32 = 2;
+const A_MIN: u32 = 1;
 const A_MAX: u32 = 300;
 
 impl Nuclide {
@@ -116,6 +116,15 @@ mod tests {
         assert_eq!(u.n(), 143);
         assert_eq!(u.mass_number(), 235);
         assert_eq!(u.notation(), "U-235");
+    }
+
+    #[test]
+    fn hydrogen_1_is_valid() {
+        let h = Nuclide::hydrogen_1();
+        assert_eq!(h.z(), 1);
+        assert_eq!(h.n(), 0);
+        assert_eq!(h.mass_number(), 1);
+        assert_eq!(h.notation(), "H-1");
     }
 
     #[test]
