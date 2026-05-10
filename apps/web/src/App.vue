@@ -47,7 +47,8 @@ function onSelectIsotope(z: number, n: number) {
   try {
     session.value.set_isotope(z, n);
     refreshState();
-    startingIsotope.value = simState.value?.current_step.nuclide.notation ?? null;
+    startingIsotope.value =
+      simState.value?.current_step.nuclide.notation ?? null;
     pickerOpen.value = false;
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
@@ -138,7 +139,11 @@ function onSwitchFragment(leg: "light" | "heavy") {
   switchBranch(leg);
 }
 
-function onGoToBranchStep(leg: "light" | "heavy", fissionIndex: number, offset: number) {
+function onGoToBranchStep(
+  leg: "light" | "heavy",
+  fissionIndex: number,
+  offset: number,
+) {
   if (!session.value) return;
   try {
     const wantHeavy = leg === "heavy";
@@ -167,8 +172,24 @@ onMounted(async () => {
 <template>
   <div class="app">
     <header class="header">
-      <h1>Isotope Explorer</h1>
-      <p class="subtitle">Pick an isotope, fire neutrons, induce decay, and see what happens</p>
+      <div class="header-brand">
+        <a
+          class="header-logo-link"
+          href="https://atomicambitions.com"
+          rel="noopener noreferrer"
+          aria-label="Atomic Ambitions — home">
+          <img
+            class="header-logo"
+            src="/images/atomic-ambitions-logo-sq.png"
+            alt="" />
+        </a>
+        <div class="header-text">
+          <h1>Isotope Explorer</h1>
+          <p class="subtitle">
+            Pick an isotope, fire neutrons, induce decay, and see what happens
+          </p>
+        </div>
+      </div>
     </header>
 
     <!-- Isotope picker (full width) -->
@@ -186,21 +207,39 @@ onMounted(async () => {
         <h2 class="picker-heading">Choose an Isotope</h2>
         <div class="picker-toggle">
           <div class="picker-tabs">
-            <button class="toggle-btn" :class="{ active: pickerView === 'quick' }" @click="pickerView = 'quick'">
+            <button
+              class="toggle-btn"
+              :class="{ active: pickerView === 'quick' }"
+              @click="pickerView = 'quick'">
               Quick Pick
             </button>
-            <button class="toggle-btn" :class="{ active: pickerView === 'table' }" @click="pickerView = 'table'">
+            <button
+              class="toggle-btn"
+              :class="{ active: pickerView === 'table' }"
+              @click="pickerView = 'table'">
               Periodic Table
             </button>
           </div>
           <div class="isotope-legend" aria-label="Isotope color legend">
-            <span class="legend-item"><span class="legend-swatch stable"></span>Stable</span>
-            <span class="legend-item"><span class="legend-swatch fissile"></span>Fissile</span>
-            <span class="legend-item"><span class="legend-swatch radioactive"></span>Radioactive</span>
+            <span class="legend-item"
+              ><span class="legend-swatch stable"></span>Stable</span
+            >
+            <span class="legend-item"
+              ><span class="legend-swatch fissile"></span>Fissile</span
+            >
+            <span class="legend-item"
+              ><span class="legend-swatch radioactive"></span>Radioactive</span
+            >
           </div>
         </div>
-        <PeriodicTablePicker v-if="pickerView === 'table'" :session="session" @select-isotope="onSelectIsotope" />
-        <QuickPickList v-else :session="session" @select-isotope="onSelectIsotope" />
+        <PeriodicTablePicker
+          v-if="pickerView === 'table'"
+          :session="session"
+          @select-isotope="onSelectIsotope" />
+        <QuickPickList
+          v-else
+          :session="session"
+          @select-isotope="onSelectIsotope" />
       </template>
     </section>
 
@@ -210,24 +249,51 @@ onMounted(async () => {
         <div class="viewport-header">
           <h2 class="panel-title">Action Viewer</h2>
           <div class="chain-view-toggle" v-if="simState">
-            <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'graph' }"
-              @click="chainViewMode = 'graph'">Graph</button>
-            <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'cards' }"
-              @click="chainViewMode = 'cards'">Cards</button>
-            <button class="chain-toggle-btn" :class="{ active: chainViewMode === 'list' }"
-              @click="chainViewMode = 'list'">List</button>
+            <button
+              class="chain-toggle-btn"
+              :class="{ active: chainViewMode === 'graph' }"
+              @click="chainViewMode = 'graph'">
+              Graph
+            </button>
+            <button
+              class="chain-toggle-btn"
+              :class="{ active: chainViewMode === 'cards' }"
+              @click="chainViewMode = 'cards'">
+              Cards
+            </button>
+            <button
+              class="chain-toggle-btn"
+              :class="{ active: chainViewMode === 'list' }"
+              @click="chainViewMode = 'list'">
+              List
+            </button>
           </div>
         </div>
         <div v-if="!simState" class="viewport-placeholder">
           Choose an isotope to begin.
         </div>
-        <ChainView v-else-if="chainViewMode === 'list'" :steps="allSteps" :cursor="simState.cursor"
+        <ChainView
+          v-else-if="chainViewMode === 'list'"
+          :steps="allSteps"
+          :cursor="simState.cursor"
           @go-to-step="goToStep" />
-        <NuclideGraphView v-else-if="chainViewMode === 'graph'" :steps="allSteps" :cursor="simState.cursor"
-          :fission-tails="fissionTails" @go-to-step="goToStep" />
-        <CardChainView v-else :session="session" :steps="allSteps" :cursor="simState.cursor"
-          :following-heavy="simState.following_heavy" :step-by-step="stepByStep" :fission-tails="fissionTails"
-          @go-to-step="goToStep" @go-to-branch-step="onGoToBranchStep" @switch-fragment="onSwitchFragment" />
+        <NuclideGraphView
+          v-else-if="chainViewMode === 'graph'"
+          :steps="allSteps"
+          :cursor="simState.cursor"
+          :fission-tails="fissionTails"
+          @go-to-step="goToStep" />
+        <CardChainView
+          v-else
+          :session="session"
+          :steps="allSteps"
+          :cursor="simState.cursor"
+          :following-heavy="simState.following_heavy"
+          :step-by-step="stepByStep"
+          :fission-tails="fissionTails"
+          @go-to-step="goToStep"
+          @go-to-branch-step="onGoToBranchStep"
+          @switch-fragment="onSwitchFragment" />
       </section>
 
       <ToolPanel
@@ -240,36 +306,95 @@ onMounted(async () => {
         @induce-decay="induceDecay"
         @step-back="stepBack"
         @step-forward="stepForward"
-        @switch-branch="switchBranch"
-      />
+        @switch-branch="switchBranch" />
     </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <p class="footer-copy">© 2026 Atomic Ambitions. All rights reserved</p>
+        <a
+          class="footer-logo-link"
+          href="https://atomicambitions.com"
+          rel="noopener noreferrer"
+          aria-label="Atomic Ambitions — home"
+        >
+          <img
+            class="footer-logo"
+            src="/images/atomic-ambitions-logo.png"
+            alt=""
+          />
+        </a>
+      </div>
+    </footer>
   </div>
 </template>
 
 <style>
 html,
-body,
+body {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+}
+
 #app {
   margin: 0;
   width: 100%;
-  height: 100%;
+  min-height: 100vh;
 }
 </style>
 
 <style scoped>
 .app {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
   background: #0f1419;
   color: #e6edf3;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
 }
 
 .header {
   padding: 1rem 1.25rem;
   border-bottom: 1px solid #30363d;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.header-logo-link {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  line-height: 0;
+  opacity: 0.92;
+  transition: opacity 0.15s;
+}
+
+.header-logo-link:hover {
+  opacity: 1;
+}
+
+.header-logo {
+  display: block;
+  height: 2.25rem;
+  width: auto;
+  max-width: min(11rem, 38vw);
+  object-fit: contain;
+}
+
+.header-text {
+  min-width: 0;
 }
 
 .header h1 {
@@ -284,13 +409,66 @@ body,
   color: #8b949e;
 }
 
+@media (max-width: 480px) {
+  .header-brand {
+    flex-wrap: wrap;
+    gap: 0.65rem 1rem;
+  }
+
+  .header-logo {
+    height: 1.85rem;
+    max-width: min(9rem, 52vw);
+  }
+}
+
 .main {
-  flex: 1;
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: 1fr minmax(280px, 340px);
   grid-template-rows: minmax(0, 1fr);
   gap: 0;
   min-height: 0;
+}
+
+.footer {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 1.25rem 1.25rem 1.5rem;
+  border-top: 1px solid #30363d;
+  background: #0d1117;
+}
+
+.footer-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  text-align: center;
+}
+
+.footer-logo-link {
+  display: flex;
+  align-items: center;
+  line-height: 0;
+  opacity: 0.92;
+  transition: opacity 0.15s;
+}
+
+.footer-logo-link:hover {
+  opacity: 1;
+}
+
+.footer-logo {
+  display: block;
+  height: 2.75rem;
+  width: auto;
+  object-fit: contain;
+}
+
+.footer-copy {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #8b949e;
 }
 
 @media (max-width: 720px) {
@@ -374,7 +552,9 @@ body,
   color: #6e7681;
   font-size: 0.75rem;
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s;
+  transition:
+    color 0.12s,
+    border-color 0.12s;
 }
 
 .chain-toggle-btn:hover {
@@ -425,7 +605,9 @@ body,
   color: #8b949e;
   font-size: 0.8rem;
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s;
+  transition:
+    color 0.12s,
+    border-color 0.12s;
 }
 
 .picker-clear-btn:hover {
@@ -467,7 +649,9 @@ body,
   font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
 .toggle-btn:hover {
@@ -529,5 +713,4 @@ body,
     padding-bottom: 0;
   }
 }
-
 </style>
