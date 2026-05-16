@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import type { SimState, StepInfo } from "@wasm/nuclear_sim_wasm.js";
 import PeriodicTablePicker from "./components/PeriodicTablePicker.vue";
 import QuickPickList from "./components/QuickPickList.vue";
@@ -7,6 +8,10 @@ import ChainView from "./components/ChainView.vue";
 import CardChainView from "./components/CardChainView.vue";
 import NuclideGraphView from "./components/NuclideGraphView.vue";
 import ToolPanel from "./components/ToolPanel.vue";
+import { parseIsotopeSlug, toIsotopeSlug } from "./utils/isotope-slug";
+
+const route = useRoute();
+const router = useRouter();
 
 type PickerView = "table" | "quick";
 const pickerView = ref<PickerView>("quick");
@@ -19,6 +24,7 @@ const stepByStep = ref(true);
 
 const wasmVersion = ref("...");
 const wasmError = ref<string | null>(null);
+const routeError = ref<string | null>(null);
 const session = ref<any>(null);
 const simState = ref<SimState | null>(null);
 const allSteps = ref<StepInfo[]>([]);
@@ -42,16 +48,28 @@ function refreshState() {
   }
 }
 
-function onSelectIsotope(z: number, n: number) {
-  if (!session.value) return;
+function loadIsotope(z: number, n: number) {
+  if (!session.value) return false;
   try {
     session.value.set_isotope(z, n);
     refreshState();
     startingIsotope.value =
       simState.value?.current_step.nuclide.notation ?? null;
     pickerOpen.value = false;
+    routeError.value = null;
+    wasmError.value = null;
+    return true;
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
+    return false;
+  }
+}
+
+function onSelectIsotope(z: number, n: number) {
+  if (!loadIsotope(z, n)) return;
+  const slug = toIsotopeSlug(z, n);
+  if (slug && route.params.slug !== slug) {
+    router.push(`/${slug}`);
   }
 }
 
@@ -61,6 +79,45 @@ function clearIsotope() {
   startingIsotope.value = null;
   fissionTails.value = undefined;
   pickerOpen.value = true;
+  routeError.value = null;
+  if (route.params.slug) {
+    router.push("/");
+  }
+}
+
+function applyRouteSlug(rawSlug: string | string[] | undefined) {
+  const slugParam = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug;
+  if (!slugParam) {
+    routeError.value = null;
+    if (!startingIsotope.value) {
+      pickerOpen.value = true;
+    }
+    return;
+  }
+
+  const parsed = parseIsotopeSlug(slugParam);
+  if (!parsed) {
+    routeError.value = `Unknown isotope “${slugParam}”. Use a path like /c-14 or /u-235.`;
+    pickerOpen.value = true;
+    return;
+  }
+
+  if (slugParam !== parsed.slug) {
+    router.replace(`/${parsed.slug}`);
+    return;
+  }
+
+  if (!session.value) return;
+
+  if (startingIsotope.value === simState.value?.current_step.nuclide.notation) {
+    const current = simState.value?.current_step.nuclide;
+    if (current?.z === parsed.z && current?.n === parsed.n) {
+      pickerOpen.value = false;
+      return;
+    }
+  }
+
+  loadIsotope(parsed.z, parsed.n);
 }
 
 function induceDecay() {
@@ -163,10 +220,19 @@ onMounted(async () => {
     wasmVersion.value = mod.sim_version();
     const s = new mod.SimSession();
     session.value = s;
+    applyRouteSlug(route.params.slug);
   } catch (e) {
     wasmError.value = e instanceof Error ? e.message : String(e);
   }
 });
+
+watch(
+  () => route.params.slug,
+  (slug) => {
+    if (!session.value) return;
+    applyRouteSlug(slug);
+  },
+);
 </script>
 
 <template>
@@ -204,6 +270,7 @@ onMounted(async () => {
 
       <!-- Expanded: full picker UI -->
       <template v-else>
+        <p v-if="routeError" class="route-error" role="alert">{{ routeError }}</p>
         <h2 class="picker-heading">Choose an Isotope</h2>
         <div class="picker-toggle">
           <div class="picker-tabs">
@@ -613,6 +680,13 @@ body {
 .picker-clear-btn:hover {
   color: #e6edf3;
   border-color: #58a6ff;
+}
+
+.route-error {
+  margin: 0;
+  padding: 0.75rem 1.25rem 0;
+  font-size: 0.875rem;
+  color: #f85149;
 }
 
 .picker-heading {

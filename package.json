@@ -2,7 +2,7 @@
   "name": "isotopic-explorer",
   "private": true,
   "devDependencies": {
-    "wasm-pack": "^0.14.0",
+    "wasm-pack": "^0.15.0",
     "wrangler": "^4.84.0"
   },
   "scripts": {
